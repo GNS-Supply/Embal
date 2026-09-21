@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magius · Controle de Embalagens</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#181C26">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Magius">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link id="theme-magius" rel="stylesheet" href="style.css">
+<link id="theme-yms" rel="stylesheet" href="style-yms.css" disabled>
+<link rel="stylesheet" href="responsive.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js') // Certifique-se de que o nome do seu arquivo SW seja sw.js
+        .then(reg => console.log('Service Worker registrado:', reg))
+        .catch(err => console.error('Erro ao registrar Service Worker:', err));
+    });
+  }
+</script>
+<style>
+  .planta-indicator-wrap{display:flex;align-items:center;gap:6px;margin-right:8px;}
+  .planta-indicator-wrap #planta-badge{
+    display:inline-flex;align-items:center;gap:4px;
+    color:rgba(255,255,255,.88);
+    font-size:12px;
+    white-space:nowrap;
+  }
+  .planta-indicator-wrap.planta-diferente #planta-badge,
+  .planta-indicator-wrap.planta-diferente #topbar-planta-select{color:#FFB020;}
+  .planta-indicator-wrap.planta-diferente::after{content:'⚠ outra planta';font-size:10px;color:#FFB020;white-space:nowrap;}
+  /* No topbar, o cargo do usuário (ex: ADMINISTRADOR) vira texto branco simples, sem a pílula
+     colorida — a pílula continua normal em outros lugares (ex: lista de usuários no Admin). */
+  .topbar .user-badge{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;line-height:1.35;gap:1px;}
+  .topbar .user-badge #topbar-name{font-size:13px;font-weight:700;color:#FFFFFF;}
+  .topbar .role-tag{background:none;color:rgba(255,255,255,.6);padding:0;margin-left:0;text-transform:lowercase;font-weight:400;font-size:10px;}
+</style>
+</head>
+<body>
+ 
+<div id="loading-screen">
+  <div class="loader-ring"></div>
+  <div style="font-size:12px;color:var(--text2);font-family:var(--font-mono);letter-spacing:2px;">CARREGANDO...</div>
+</div>
+ 
+<!-- AUTH -->
+<div id="auth-screen" style="display:none;">
+  <div class="auth-card">
+    <div class="auth-logo">Magius</div>
+    <div class="auth-title">Controle de Embalagens</div>
+    <div class="auth-sub" id="auth-sub-text">Faça login para continuar</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Entrar</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Criar conta</button>
+      <button class="auth-tab" onclick="switchAuthTab('forgot')">Recuperar</button>
+    </div>
+    <div id="auth-error" class="error-msg"></div>
+    <div id="auth-success" class="success-msg"></div>
+ 
+    <!-- LOGIN -->
+    <div id="login-form">
+      <div class="field"><label>E-MAIL</label><input type="email" id="login-email" placeholder="seu@email.com" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div class="field"><label>SENHA</label>
+        <div class="pass-wrap"><input type="password" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"><button class="pass-toggle" type="button" onclick="togglePass('login-pass',this)">👁</button></div>
+        <span class="forgot-link" onclick="switchAuthTab('forgot')">Esqueceu a senha?</span>
+      </div>
+      <button class="btn btn-primary" onclick="doLogin()">Entrar</button>
+    </div>
+ 
+    <!-- REGISTER -->
+    <div id="register-form" style="display:none;">
+      <div class="field"><label>NOME COMPLETO</label><input type="text" id="reg-name" placeholder="Seu nome completo"></div>
+      <div class="field"><label>E-MAIL</label><input type="email" id="reg-email" placeholder="seu@email.com"></div>
+      <div class="field"><label>SENHA</label>
+        <div class="pass-wrap"><input type="password" id="reg-pass" placeholder="mínimo 6 caracteres"><button class="pass-toggle" type="button" onclick="togglePass('reg-pass',this)">👁</button></div>
+      </div>
+      <div class="field"><label>CONFIRMAR SENHA</label>
+        <div class="pass-wrap"><input type="password" id="reg-pass2" placeholder="repita a senha" onkeydown="if(event.key==='Enter')doRegister()"><button class="pass-toggle" type="button" onclick="togglePass('reg-pass2',this)">👁</button></div>
+      </div>
+      <button class="btn btn-primary" onclick="doRegister()">Criar conta</button>
+    </div>
+ 
+    <!-- FORGOT -->
+    <div id="forgot-form" style="display:none;">
+      <div style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6;">Informe seu e-mail cadastrado e enviaremos um link para redefinir sua senha.</div>
+      <div class="field"><label>E-MAIL</label><input type="email" id="forgot-email" placeholder="seu@email.com" onkeydown="if(event.key==='Enter')doForgot()"></div>
+      <button class="btn btn-primary" onclick="doForgot()">Enviar link de recuperação</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-brand">Magius · Embalagens</div>
+    <div class="topbar-right">
+      <div class="user-badge"><span id="topbar-name">–</span> <span id="topbar-role" class="role-tag"></span></div>
+      <div id="planta-indicator-wrap" class="planta-indicator-wrap" style="display:none;">
+        <select id="topbar-planta-select" class="btn btn-secondary btn-sm planta-select-auto" style="display:none" onchange="onPlantaSelectChange(this.value)"></select>
+        <span id="planta-badge" style="display:none;"></span>
+      </div>
+      <button class="btn btn-secondary btn-sm btn-icon admin-topbar-btn" id="btn-notif" onclick="openModalNotificacoes()" title="Notificações">🔔</button>
+      <button class="btn btn-secondary btn-sm btn-icon admin-topbar-btn" id="nav-admin" onclick="switchTab('admin')" title="Administração">⚙</button>
+      <button class="btn btn-secondary btn-sm" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" id="nav-registro" onclick="switchTab('registro')">＋ Registro</button>
+    <button class="nav-tab" id="nav-consulta" onclick="switchTab('consulta')">🔍 Consulta</button>
+    <button class="nav-tab" id="nav-clientes" onclick="switchTab('clientes')">🏢 Clientes</button>
+    <button class="nav-tab" id="nav-embalagens-cat" onclick="switchTab('embalagens-cat')">📦 Embalagens</button>
+    <button class="nav-tab" id="nav-baixa" onclick="switchTab('baixa')" style="display:none">📉 Baixa de Saldo</button>
+    <button class="nav-tab" id="nav-solicitacoes" onclick="switchTab('solicitacoes')" style="display:none">📋 Solicitações</button>
+    <button class="nav-tab" id="nav-nf" onclick="switchTab('nf')" style="display:none">📄 Solicitação de NF</button>
+    <button class="nav-tab" id="nav-inventario" onclick="switchTab('inventario')">🧮 Inventário</button>
+    <button class="nav-tab" id="nav-planejamento" onclick="window.location.href='planejamento.html'" style="display:none">📊 Planejamento</button>
+  </div>
+ 
+  <!-- REGISTRO -->
+  <div id="tab-registro" class="page active">
+    <div class="page-header">
+      <div><div class="page-title">Novo Registro de Entrada</div><div class="page-sub">Preencha os dados da carga recebida</div></div>
+    </div>
+    <div id="reg-no-access" class="access-denied" style="display:none;">
+      <div class="icon">🔒</div><p>Seu perfil não tem permissão para registrar entradas.</p>
+    </div>
+    <div id="reg-form-wrap">
+      <div class="form-card">
+        <div class="form-card-title">🚛 Dados do recebimento</div>
+        <div class="form-grid">
+          <div class="field"><label>DATA / HORA <span style="color:var(--accent);font-size:10px">AUTO</span></label><input type="text" id="f-datetime" readonly></div>
+          <div class="field"><label>USUÁRIO <span style="color:var(--accent);font-size:10px">AUTO</span></label><input type="text" id="f-user" readonly></div>
+          <div class="field"><label>PLACA DO CAMINHÃO</label><input type="text" id="f-placa" placeholder="AAA-0A00" maxlength="8" oninput="maskPlaca(this)"></div>
+          <div class="field"><label>TRANSPORTADORA</label><input type="text" id="f-transportadora" placeholder="Nome da transportadora"></div>
+          <div class="field"><label>NÚMERO DA NOTA FISCAL *</label><input type="text" id="f-nota" placeholder="000000"></div>
+        </div>
+      </div>
+      <div class="form-card">
+        <div class="form-card-title">📦 Embalagens Recebidas</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:14px;">Uma nota fiscal pode conter embalagens de clientes diferentes — selecione o cliente em cada linha.</div>
+        <div id="emb-list"></div>
+        <button class="btn-add-emb" onclick="addEmbRow()">+ Adicionar embalagem</button>
+      </div>
+      <div class="form-card">
+        <div class="form-card-title">📷 Fotos da Carga</div>
+        <div class="foto-zone" onclick="document.getElementById('foto-input').click()">
+          <input type="file" id="foto-input" accept="image/*" multiple capture="environment" onchange="handleFotos(this)" style="display:none">
+          <div class="foto-zone-icon">📷</div>
+          <div class="foto-zone-text">Toque para fotografar ou selecionar da galeria<br><small style="color:var(--text3)">Aceita múltiplas fotos</small></div>
+        </div>
+        <div class="foto-preview" id="foto-preview"></div>
+      </div>
+      <div class="form-card">
+        <div class="form-card-title">📝 Observações</div>
+        <textarea id="f-obs" placeholder="Observações adicionais (opcional)…" rows="3" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;color:var(--text);font-family:var(--font-body);font-size:14px;outline:none;resize:vertical;"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary" style="flex:1;min-width:160px" id="btn-salvar" onclick="salvarRegistro()">✓ Salvar Registro</button>
+        <button class="btn btn-secondary" onclick="limparForm()">↺ Limpar</button>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- CONSULTA -->
+  <div id="tab-consulta" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Consulta de Registros</div><div class="page-sub">Histórico de entradas de embalagens</div></div>
+    </div>
+    <div class="filter-bar">
+      <div class="field"><label>FILTRAR POR CLIENTE</label><input type="text" id="filter-cliente" placeholder="Nome do cliente..." oninput="renderTabela()"></div>
+      <div class="field"><label>FILTRAR POR CÓD. EMBALAGEM</label><input type="text" id="filter-cod" placeholder="Código..." oninput="renderTabela()"></div>
+      <div class="field"><label>DATA INICIAL</label><input type="date" id="filter-data-ini" oninput="renderTabela()"></div>
+      <div class="field"><label>DATA FINAL</label><input type="date" id="filter-data-fim" oninput="renderTabela()"></div>
+      <div style="display:flex;align-items:flex-end;"><button class="btn btn-secondary btn-sm" onclick="limparFiltros()">✕ Limpar</button></div>
+    </div>
+    <div class="export-bar">
+      <div class="count">Exibindo <span id="count-registros">0</span> registros</div>
+      <div class="export-btns">
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportXLSX()">⬇ Excel (.xlsx)</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table class="table-consulta">
+          <thead><tr>
+            <th class="sortable" onclick="sortRegistros('data')">Data / Hora<span class="sort-ind" id="sort-ind-reg-data"></span></th>
+            <th class="sortable" onclick="sortRegistros('usuario')">Usuário<span class="sort-ind" id="sort-ind-reg-usuario"></span></th>
+            <th class="sortable" onclick="sortRegistros('placa')">Placa<span class="sort-ind" id="sort-ind-reg-placa"></span></th>
+            <th class="sortable" onclick="sortRegistros('transportadora')">Transportadora<span class="sort-ind" id="sort-ind-reg-transportadora"></span></th>
+            <th class="sortable" onclick="sortRegistros('cliente')">Cliente(s)<span class="sort-ind" id="sort-ind-reg-cliente"></span></th>
+            <th class="sortable" onclick="sortRegistros('nota')">Nota Fiscal<span class="sort-ind" id="sort-ind-reg-nota"></span></th>
+            <th>Embalagens</th><th>Fotos</th><th>Obs.</th><th>--</th>
+          </tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div id="empty-state" class="empty-state" style="display:none;">
+        <div class="empty-icon">📭</div><p>Nenhum registro encontrado</p>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- CLIENTES -->
+  <div id="tab-clientes" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Cadastro de Clientes</div><div class="page-sub">Gerencie os clientes cadastrados</div></div>
+      <button class="btn btn-secondary" id="btn-novo-cliente" onclick="openModalCliente()">+ Novo Cliente</button>
+    </div>
+    <div id="clientes-no-access" class="access-denied" style="display:none;">
+      <div class="icon">🔒</div><p>Seu perfil não tem permissão para gerenciar clientes.</p>
+    </div>
+    <div id="clientes-wrap">
+      <div class="filter-bar">
+        <div class="field"><label>BUSCAR CLIENTE</label><input type="text" id="filter-cli-nome" placeholder="Nome do cliente..." oninput="renderClientes()"></div>
+      </div>
+      <div class="table-wrap">
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr>
+              <th class="sortable" onclick="sortClientes('nome')">Cliente<span class="sort-ind" id="sort-ind-cli-nome"></span></th>
+              <th class="sortable" onclick="sortClientes('dx')">D+X<span class="sort-ind" id="sort-ind-cli-dx"></span></th>
+              <th class="sortable" onclick="sortClientes('count')">Embalagens cadastradas<span class="sort-ind" id="sort-ind-cli-count"></span></th>
+              <th>--</th>
+            </tr></thead>
+            <tbody id="clientes-grid"></tbody>
+          </table>
+        </div>
+        <div id="clientes-empty" class="empty-state" style="display:none;"><div class="empty-icon">🏢</div><p>Nenhum cliente cadastrado</p></div>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- EMBALAGENS CATÁLOGO -->
+  <div id="tab-embalagens-cat" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Catálogo de Embalagens</div><div class="page-sub">Embalagens cadastradas por cliente</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="btn-nova-emb-cat" onclick="openModalEmbCat()">+ Nova Embalagem</button>
+        <button class="btn btn-secondary" id="btn-import-emb-cat" style="display:none" onclick="openModalImportEmb()">📥 Importar planilha</button>
+      </div>
+    </div>
+    <div id="embcat-no-access" class="access-denied" style="display:none;">
+      <div class="icon">🔒</div><p>Seu perfil não tem permissão para gerenciar embalagens.</p>
+    </div>
+    <div id="embcat-wrap">
+      <div class="filter-bar">
+        <div class="field"><label>FILTRAR POR CLIENTE</label>
+          <select id="filter-embcat-cli" onchange="renderEmbCat()">
+            <option value="">Todos os clientes</option>
+          </select>
+        </div>
+        <div class="field"><label>BUSCAR CÓDIGO / NOME</label><input type="text" id="filter-embcat-cod" placeholder="Código ou nome..." oninput="renderEmbCat()"></div>
+        <div class="field"><label>PERÍODO DE</label><input type="date" id="filter-embcat-data-ini" oninput="renderEmbCat()"></div>
+        <div class="field"><label>PERÍODO ATÉ</label><input type="date" id="filter-embcat-data-fim" oninput="renderEmbCat()"></div>
+        <div style="display:flex;align-items:flex-end;"><button class="btn btn-secondary btn-sm" onclick="limparFiltrosEmbCat()">✕ Limpar período</button></div>
+        <div style="display:flex;align-items:flex-end;">
+          <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);cursor:pointer;white-space:nowrap;padding:10px 0;">
+            <input type="checkbox" id="filter-embcat-saldo" onchange="renderEmbCat()" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;"> Ocultar itens sem saldo
+          </label>
+        </div>
+      </div>
+      <div class="export-bar">
+        <div class="count">Total recebido no período: <span id="embcat-total-periodo">0</span></div>
+        <div class="export-btns">
+          <button class="btn btn-secondary btn-sm" onclick="exportEmbCatCSV()">⬇ CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="exportEmbCatXLSX()">⬇ Excel (.xlsx)</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div style="overflow-x:auto;">
+          <table class="table-embcat">
+            <thead><tr>
+              <th class="sortable" onclick="sortEmbCat('codigo')">Embalagem<span class="sort-ind" id="sort-ind-codigo"></span></th>
+              <th class="sortable" onclick="sortEmbCat('cliente')">Cliente<span class="sort-ind" id="sort-ind-cliente"></span></th>
+              <th class="sortable" onclick="sortEmbCat('nomeInterno')">Nome interno<span class="sort-ind" id="sort-ind-nomeInterno"></span></th>
+              <th class="sortable" onclick="sortEmbCat('codDatasul')">Cód. Datasul<span class="sort-ind" id="sort-ind-codDatasul"></span></th>
+              <th class="sortable" onclick="sortEmbCat('qtdFardo')">Qtd/Fardo<span class="sort-ind" id="sort-ind-qtdFardo"></span></th>
+              <th class="sortable" onclick="sortEmbCat('valor')">Valor (R$)<span class="sort-ind" id="sort-ind-valor"></span></th>
+              <th class="sortable col-receb-a" onclick="sortEmbCat('ultimoRecebimento')">Último recebimento<span class="sort-ind" id="sort-ind-ultimoRecebimento"></span></th>
+              <th class="sortable col-receb-b" onclick="sortEmbCat('qtdRecebida')">Qtd. recebida<span class="sort-ind" id="sort-ind-qtdRecebida"></span></th>
+              <th class="sortable" onclick="sortEmbCat('recebidoPeriodo')">Recebido no período<span class="sort-ind" id="sort-ind-recebidoPeriodo"></span></th>
+              <th class="sortable col-vazias" id="th-col-vazias" style="display:none" onclick="sortEmbCat('vazias')">Saldo VAZIAS<span class="sort-ind" id="sort-ind-vazias"></span></th>
+              <th class="sortable col-cheias" id="th-col-cheias" style="display:none" onclick="sortEmbCat('cheias')">Saldo CHEIAS<span class="sort-ind" id="sort-ind-cheias"></span></th>
+              <th class="sortable col-total" id="th-col-total" style="display:none" onclick="sortEmbCat('total')">Saldo TOTAL<span class="sort-ind" id="sort-ind-total"></span></th>
+              <th>--</th>
+            </tr></thead>
+            <tbody id="embcat-grid"></tbody>
+          </table>
+        </div>
+        <div id="embcat-empty" class="empty-state" style="display:none;"><div class="empty-icon">📦</div><p>Nenhuma embalagem cadastrada</p></div>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- BAIXA DE SALDO -->
+  <div id="tab-baixa" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Baixa de Saldo</div><div class="page-sub">Saldo disponível de embalagens por cliente</div></div>
+    </div>
+    <div class="filter-bar">
+      <div class="field"><label>FILTRAR POR CLIENTE</label>
+        <select id="filter-baixa-cli" onchange="renderBaixaSaldo()">
+          <option value="">Todos os clientes</option>
+        </select>
+      </div>
+      <div class="field"><label>BUSCAR CÓDIGO / NOME</label><input type="text" id="filter-baixa-cod" placeholder="Código ou nome..." oninput="renderBaixaSaldo()"></div>
+      <div style="display:flex;align-items:flex-end;">
+        <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);cursor:pointer;white-space:nowrap;padding:10px 0;">
+          <input type="checkbox" id="filter-baixa-saldo" onchange="renderBaixaSaldo()" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;"> Ocultar itens sem saldo
+        </label>
+      </div>
+    </div>
+    <div class="export-bar">
+      <div class="count">Exibindo <span id="count-baixa">0</span> itens</div>
+      <div class="export-btns">
+        <button class="btn btn-secondary btn-sm" onclick="exportBaixaCSV()">⬇ CSV</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportBaixaXLSX()">⬇ Excel (.xlsx)</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th class="sortable" onclick="sortBaixaSaldo('codigo')">Embalagem<span class="sort-ind" id="sort-ind-bx-codigo"></span></th>
+            <th class="sortable" onclick="sortBaixaSaldo('cliente')">Cliente<span class="sort-ind" id="sort-ind-bx-cliente"></span></th>
+            <th class="sortable" style="display:none" onclick="sortBaixaSaldo('entradas')">Entradas<span class="sort-ind" id="sort-ind-bx-entradas"></span></th>
+            <th class="sortable" style="display:none" onclick="sortBaixaSaldo('baixas')">Baixas<span class="sort-ind" id="sort-ind-bx-baixas"></span></th>
+            <th class="sortable col-vazias" onclick="sortBaixaSaldo('vazio')">Saldo Vazio<span class="sort-ind" id="sort-ind-bx-vazio"></span></th>
+            <th class="sortable col-cheias" onclick="sortBaixaSaldo('cheio')">Saldo Cheio<span class="sort-ind" id="sort-ind-bx-cheio"></span></th>
+            <th class="sortable col-total" onclick="sortBaixaSaldo('total')">Saldo Total<span class="sort-ind" id="sort-ind-bx-total"></span></th>
+            <th>--</th>
+          </tr></thead>
+          <tbody id="baixa-saldo-grid"></tbody>
+        </table>
+      </div>
+      <div id="baixa-saldo-empty" class="empty-state" style="display:none;"><div class="empty-icon">📦</div><p>Nenhuma embalagem cadastrada</p></div>
+    </div>
+  </div>
+ 
+  <!-- SOLICITAÇÕES -->
+  <div id="tab-solicitacoes" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Solicitações</div><div class="page-sub">Solicite e acompanhe a retirada de embalagens</div></div>
+    </div>
+ 
+    <div id="sol-no-access" class="access-denied" style="display:none;">
+      <div class="icon">🔒</div><p>Seu perfil não tem permissão para registrar solicitações.</p>
+    </div>
+    <div class="form-card" id="sol-form-wrap">
+      <div class="form-card-title">📋 Nova Solicitação</div>
+      <div class="form-grid">
+        <div class="field"><label>CLIENTE *</label>
+          <select id="sol-cli" onchange="onSolClienteChange()">
+            <option value="">— Selecione o cliente —</option>
+          </select>
+        </div>
+        <div class="field"><label>EMBALAGEM *</label>
+          <select id="sol-emb" disabled onchange="onSolEmbChange()">
+            <option value="">— Selecione o cliente —</option>
+          </select>
+        </div>
+        <div class="field"><label>SALDO DISPONÍVEL</label><input type="text" id="sol-saldo" readonly value="–"></div>
+        <div class="field"><label>QUANTIDADE *</label><input type="number" id="sol-qtd" min="1" step="1" placeholder="0" oninput="validateSolQtd()"></div>
+      </div>
+      <div id="sol-pendente-info" class="error-msg" style="display:none;background:rgba(255,107,53,.08);border-color:rgba(255,107,53,.25);color:var(--warn);"></div>
+      <div style="margin-top:14px;">
+        <button class="btn btn-primary" id="btn-sol-salvar" onclick="salvarSolicitacao()">✓ Registrar Solicitação</button>
+      </div>
+    </div>
+ 
+    <div class="filter-bar">
+      <div class="field"><label>FILTRAR POR CLIENTE</label>
+        <select id="filter-sol-cli" onchange="renderSolicitacoes()">
+          <option value="">Todos os clientes</option>
+        </select>
+      </div>
+      <div class="field"><label>FILTRAR POR STATUS</label>
+        <select id="filter-sol-status" onchange="renderSolicitacoes()">
+          <option value="">Todos</option>
+          <option value="PENDENTE" selected>Pendente</option>
+          <option value="ATENDIDO">Atendido</option>
+          <option value="RECUSADO">Recusado</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div>
+        <table class="table-solicitacoes">
+          <thead><tr>
+            <th class="sortable" onclick="sortSolicitacoes('data')">Data/Hora<span class="sort-ind" id="sort-ind-sol-data"></span></th>
+            <th class="sortable" onclick="sortSolicitacoes('cliente')">Cliente<span class="sort-ind" id="sort-ind-sol-cliente"></span></th>
+            <th class="sortable" onclick="sortSolicitacoes('codigo')">Embalagem<span class="sort-ind" id="sort-ind-sol-codigo"></span></th>
+            <th class="sortable" onclick="sortSolicitacoes('qtdSol')">Qtd. Solicitada<span class="sort-ind" id="sort-ind-sol-qtdSol"></span></th>
+            <th class="sortable" onclick="sortSolicitacoes('qtdAt')">Qtd. Atendida<span class="sort-ind" id="sort-ind-sol-qtdAt"></span></th>
+            <th class="sortable" onclick="sortSolicitacoes('status')">Status<span class="sort-ind" id="sort-ind-sol-status"></span></th>
+            <th>Ações</th>
+          </tr></thead>
+          <tbody id="sol-grid"></tbody>
+        </table>
+      </div>
+      <div id="sol-empty" class="empty-state" style="display:none;"><div class="empty-icon">📋</div><p>Nenhuma solicitação registrada</p></div>
+    </div>
+  </div>
+
+  <!-- SOLICITAÇÃO DE NF -->
+  <div id="tab-nf" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Solicitação de NF</div><div class="page-sub">Devolução ou transferência de embalagens, com emissão de PDF para impressão</div></div>
+    </div>
+
+    <div class="form-card" id="nf-form-wrap">
+      <div class="form-card-title">📄 Nova Solicitação de NF</div>
+      <div id="nf-form-error" class="error-msg"></div>
+      <div class="form-grid">
+        <div class="field"><label>CLIENTE *</label>
+          <select id="nf-cliente" onchange="onNfClienteChange()">
+            <option value="">— Selecione o cliente —</option>
+          </select>
+        </div>
+        <div class="field"><label>TIPO DE SOLICITAÇÃO *</label>
+          <select id="nf-tipo" onchange="onNfTipoChange()">
+            <option value="">— Selecione —</option>
+            <option value="DEVOLUCAO">Devolução</option>
+            <option value="TRANSFERENCIA">Transferência entre plantas</option>
+          </select>
+        </div>
+        <div class="field" id="nf-planta-destino-wrap" style="display:none;"><label>PLANTA DE DESTINO *</label>
+          <select id="nf-planta-destino"></select>
+        </div>
+        <div class="field"><label>TRANSPORTADORA *</label><input type="text" id="nf-transportadora" placeholder="Nome da transportadora"></div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <div class="form-card-title" style="font-size:13px;margin-bottom:10px;">Itens</div>
+        <div id="nf-itens-list"></div>
+        <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="addNfItemRow()">+ Adicionar Item</button>
+      </div>
+
+      <div style="margin-top:18px;">
+        <button class="btn btn-primary" id="btn-nf-salvar" onclick="salvarSolicitacaoNF()">✓ Concluir e Gerar PDF</button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="field"><label>FILTRAR POR CLIENTE</label>
+        <select id="filter-nf-cli" onchange="renderSolicitacoesNF()">
+          <option value="">Todos os clientes</option>
+        </select>
+      </div>
+      <div class="field"><label>FILTRAR POR STATUS</label>
+        <select id="filter-nf-status" onchange="renderSolicitacoesNF()">
+          <option value="">Todos</option>
+          <option value="PENDENTE" selected>Pendente</option>
+          <option value="CONCLUIDO">Concluído</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table class="table-solicitacoes table-nf">
+          <thead><tr>
+            <th class="sortable" onclick="sortNF('data')">Data/Hora<span class="sort-ind" id="sort-ind-nf-data"></span></th>
+            <th class="sortable" onclick="sortNF('cliente')">Cliente<span class="sort-ind" id="sort-ind-nf-cliente"></span></th>
+            <th>Tipo</th>
+            <th>Transportadora</th>
+            <th>Itens</th>
+            <th>Nº NF</th>
+            <th class="sortable" onclick="sortNF('status')">Status<span class="sort-ind" id="sort-ind-nf-status"></span></th>
+            <th>Ações</th>
+          </tr></thead>
+          <tbody id="nf-grid"></tbody>
+        </table>
+      </div>
+      <div id="nf-empty" class="empty-state" style="display:none;"><div class="empty-icon">📄</div><p>Nenhuma solicitação de NF registrada</p></div>
+    </div>
+  </div>
+
+  <!-- INVENTÁRIO -->
+  <div id="tab-inventario" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Inventário de Embalagens</div><div class="page-sub">Apuração e ajuste de saldo por cliente</div></div>
+      <button class="btn btn-secondary" id="btn-import-inv" onclick="openModalImportInv()" disabled>📥 Importar Contagem</button>
+    </div>
+ 
+    <div id="inv-no-access" class="access-denied" style="display:none;">
+      <div class="icon">🔒</div><p>Apenas administradores podem acessar o inventário de embalagens.</p>
+    </div>
+ 
+    <div id="inv-wrap">
+      <div class="filter-bar">
+        <div class="field"><label>CLIENTE *</label>
+          <select id="inv-cli" onchange="onInvClienteChange()">
+            <option value="">— Selecione o cliente —</option>
+          </select>
+        </div>
+        <div class="field"><label>BUSCAR CÓDIGO / NOME</label><input type="text" id="inv-filtro-cod" placeholder="Código ou nome..." oninput="renderInventario()"></div>
+      </div>
+ 
+      <div class="table-wrap">
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr>
+              <th>Embalagem</th>
+              <th class="col-vazias">Saldo Atual VAZIAS</th>
+              <th class="col-vazias">Novo Saldo Apurado · VAZIAS</th>
+              <th class="col-cheias">Saldo Atual CHEIAS</th>
+              <th class="col-cheias">Novo Saldo Apurado · CHEIAS</th>
+            </tr></thead>
+            <tbody id="inv-grid"></tbody>
+          </table>
+        </div>
+        <div id="inv-empty" class="empty-state"><div class="empty-icon">📦</div><p>Selecione um cliente para carregar o inventário</p></div>
+      </div>
+ 
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;">
+        <button class="btn btn-primary" id="btn-confirmar-inventario" onclick="confirmarInventario()" disabled>✓ Confirmar Inventário</button>
+        <button class="btn btn-secondary" onclick="onInvClienteChange()">↺ Recarregar Saldos Atuais</button>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- ADMIN -->
+  <div id="tab-admin" class="page">
+    <div class="page-header">
+      <div><div class="page-title">Administração</div><div class="page-sub">Gerenciamento de usuários e permissões</div></div>
+    </div>
+    <div id="admin-gate-wrap">
+      <div class="admin-gate">
+        <div style="font-size:28px;margin-bottom:12px;">🔐</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px;">Área restrita</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:24px;">Insira a senha de administrador.</div>
+        <div id="admin-error" class="error-msg"></div>
+        <div class="field"><label>SENHA</label>
+          <div class="pass-wrap"><input type="password" id="admin-pass-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')checkAdminPass()"><button class="pass-toggle" type="button" onclick="togglePass('admin-pass-input',this)">👁</button></div>
+        </div>
+        <button class="btn btn-primary" onclick="checkAdminPass()">Acessar</button>
+      </div>
+    </div>
+    <div id="admin-panel" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+        <div style="font-size:14px;color:var(--text2);">Painel de administração</div>
+        <button class="btn btn-danger btn-sm" onclick="lockAdmin()">🔒 Bloquear painel</button>
+      </div>
+      <div class="form-card" id="config-modulo-card" style="display:none;">
+        <div class="form-card-title">⚙ Módulos do sistema</div>
+        <div class="config-row">
+          <div>
+            <div class="config-row-title">Módulo de Estoque</div>
+            <div class="config-row-sub">Habilita as abas "Baixa de Saldo" e "Solicitações" na navegação para todos os usuários.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-modulo-estoque" onchange="toggleModuloEstoque(this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="config-row">
+          <div>
+            <div class="config-row-title">Módulo de Planejamento</div>
+            <div class="config-row-sub">Habilita o acesso à tela de Planejamento de Embalagens (relação item×embalagem, projeção de demanda e comparação com estoque) para todos os usuários.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="toggle-modulo-planejamento" onchange="toggleModuloPlanejamento(this.checked)">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+<!-- CADASTRO DE PLANTAS -->
+<div class="form-card" id="plantas-card" style="display:none;">
+  <div class="page-header" style="margin-bottom:14px;">
+    <div class="form-card-title" style="margin:0;">🏭 Plantas (Matriz / Filiais)</div>
+    <button class="btn btn-secondary btn-sm" onclick="openModalPlanta()">+ Nova Planta</button>
+  </div>
+  <div id="plantas-list" class="users-list"></div>
+</div>
+
+<!-- CONFIGURAÇÃO DE APARÊNCIA -->
+<div class="form-card" id="config-tema-card" style="display:none;">
+  <div class="form-card-title">🎨 Aparência do sistema</div>
+
+  <div class="config-row">
+    <div>
+      <div class="config-row-title">Tema do Sistema</div>
+      <div class="config-row-sub">
+        Escolha o tema utilizado por todo o sistema, para todos os usuários. A alteração é aplicada imediatamente e salva automaticamente.
+      </div>
+    </div>
+
+    <div style="min-width:220px;flex:0 1 280px;">
+      <select
+        id="select-tema-sistema"
+        onchange="alterarTemaAdmin(this.value)"
+        style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 12px;font-family:var(--font-body);font-size:13px;outline:none;cursor:pointer;"
+      >
+        <option value="magius">Tema Escuro</option>
+        <option value="yms">Tema Claro</option>
+      </select>
+
+      <div
+        id="tema-sistema-descricao"
+        style="font-size:11px;color:var(--text2);margin-top:7px;line-height:1.5;"
+      >
+        Tema escuro do Controle de Embalagens.
+      </div>
+    </div>
+  </div>
+</div>
+
+      
+      <div class="form-card" id="auditoria-card" style="display:none;">
+        <div class="form-card-title">🧾 Auditoria e Compliance</div>
+        <div class="config-row">
+          <div>
+            <div class="config-row-title">Relatório de Auditoria (audit_logs)</div>
+            <div class="config-row-sub">Exporte o histórico completo de eventos (cadastros, entradas, baixas, solicitações e ajustes de inventário) filtrado por período, tipo, cliente ou código.</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="abrirModalExportar()">📊 Exportar Relatório</button>
+        </div>
+      </div>
+      <div class="form-card-title" style="margin-bottom:14px;">Usuários cadastrados</div>
+      <div id="users-list" class="users-list"></div>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL DETALHES REGISTRO -->
+<div id="modal-detail" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-detail')">✕</button>
+    <div class="modal-title">Detalhes do Registro</div>
+    <div class="detail-grid" id="modal-detail-content"></div>
+    <div id="modal-foto-section" style="display:none;">
+      <div style="font-size:11px;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:10px;">Fotos</div>
+      <div class="foto-gallery" id="modal-fotos"></div>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL EXCLUIR -->
+<div id="modal-delete" class="modal-overlay">
+  <div class="modal" style="max-width:420px;">
+    <button class="modal-close" onclick="closeModal('modal-delete')">✕</button>
+    <div class="modal-title" style="color:var(--warn);">🗑 Excluir Registro</div>
+    <div style="color:var(--text2);font-size:13px;margin-bottom:20px;line-height:1.6;">Ação <strong style="color:var(--warn)">irreversível</strong>. Confirme com a senha de administrador:</div>
+    <div id="delete-error" class="error-msg"></div>
+    <div class="field"><label>SENHA DE ADMINISTRADOR</label>
+      <div class="pass-wrap"><input type="password" id="delete-pass-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')confirmDelete()"><button class="pass-toggle" type="button" onclick="togglePass('delete-pass-input',this)">👁</button></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="btn btn-danger" style="flex:1" onclick="confirmDelete()">Confirmar Exclusão</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-delete')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL PLANTA -->
+<div id="modal-planta" class="modal-overlay">
+  <div class="modal" style="max-width:420px;">
+    <button class="modal-close" onclick="closeModal('modal-planta')">✕</button>
+    <div class="modal-title" id="modal-planta-title">Nova Planta</div>
+    <div id="modal-planta-error" class="error-msg"></div>
+    <div class="form-grid">
+      <div class="field full"><label>NOME DA PLANTA *</label><input type="text" id="planta-nome" placeholder="Ex: Filial Sul"></div>
+      <div class="field full"><label>CÓDIGO *</label><input type="text" id="planta-codigo" placeholder="Ex: FSU" oninput="this.value=this.value.toUpperCase()"></div>
+    </div>
+    <input type="hidden" id="planta-edit-id">
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-primary" id="btn-salvar-planta" style="flex:1" onclick="salvarPlanta()">Salvar Planta</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-planta')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CLIENTE -->
+<div id="modal-cliente" class="modal-overlay">
+  <div class="modal" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modal-cliente')">✕</button>
+    <div class="modal-title" id="modal-cliente-title">Novo Cliente</div>
+    <div id="modal-cliente-error" class="error-msg"></div>
+    <div class="form-grid">
+      <div class="field full"><label>NOME DO CLIENTE *</label><input type="text" id="cli-nome" placeholder="Razão social / nome"></div>
+      <div class="field"><label>D+X (dias) *</label><input type="number" id="cli-dx" placeholder="Ex: 3" min="0" step="1"></div>
+      <div class="field full"><label>ÍCONE DO CLIENTE</label>
+        <div class="single-upload-zone" onclick="document.getElementById('cli-icon-input').click()">
+          <input type="file" id="cli-icon-input" accept="image/*" onchange="handleCliIcon(this)" style="display:none">
+          <img id="cli-icon-preview" class="icon-preview-img" style="display:none;">
+          <span class="su-placeholder" id="cli-icon-placeholder">📷 Selecionar ícone (opcional)</span>
+        </div>
+      </div>
+    </div>
+    <input type="hidden" id="cli-edit-id">
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-primary" id="btn-salvar-cliente" style="flex:1" onclick="salvarCliente()">Salvar Cliente</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-cliente')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL EXCLUIR CLIENTE -->
+<div id="modal-delete-cli" class="modal-overlay">
+  <div class="modal" style="max-width:420px;">
+    <button class="modal-close" onclick="closeModal('modal-delete-cli')">✕</button>
+    <div class="modal-title" style="color:var(--warn);">🗑 Excluir Cliente</div>
+    <div style="color:var(--text2);font-size:13px;margin-bottom:20px;line-height:1.6;">Isso também excluirá todas as embalagens vinculadas a este cliente. Confirme com a senha de administrador:</div>
+    <div id="delete-cli-error" class="error-msg"></div>
+    <div class="field"><label>SENHA DE ADMINISTRADOR</label>
+      <div class="pass-wrap"><input type="password" id="delete-cli-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')confirmDeleteCli()"><button class="pass-toggle" type="button" onclick="togglePass('delete-cli-pass',this)">👁</button></div>
+    </div>
+    <input type="hidden" id="delete-cli-id">
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="btn btn-danger" style="flex:1" onclick="confirmDeleteCli()">Confirmar</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-delete-cli')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL EMBALAGENS DO CLIENTE -->
+<div id="modal-cliente-embalagens" class="modal-overlay">
+  <div class="modal" style="max-width:min(1400px,95vw);">
+    <button class="modal-close" onclick="closeModal('modal-cliente-embalagens')">✕</button>
+    <div class="modal-title">📦 Embalagens do Cliente</div>
+    <div class="detail-grid" style="margin-bottom:18px;">
+      <div class="detail-item"><label>CLIENTE</label><span id="cliemb-info-cliente">–</span></div>
+    </div>
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table class="table-cliemb">
+          <thead><tr>
+            <th>Embalagem</th>
+            <th>Descrição</th>
+            <th>Nome Interno</th>
+            <th class="col-vazias" id="th-cliemb-vazias" style="display:none">Saldo VAZIAS</th>
+            <th class="col-cheias" id="th-cliemb-cheias" style="display:none">Saldo CHEIAS</th>
+            <th class="col-total" id="th-cliemb-total" style="display:none">Saldo TOTAL</th>
+          </tr></thead>
+          <tbody id="cliemb-grid"></tbody>
+        </table>
+      </div>
+      <div id="cliemb-empty" class="empty-state" style="display:none;"><div class="empty-icon">📦</div><p>Nenhuma embalagem cadastrada para este cliente</p></div>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL EMBALAGEM CATÁLOGO -->
+<div id="modal-emb-cat" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-emb-cat')">✕</button>
+    <div class="modal-title" id="modal-emb-cat-title">Nova Embalagem</div>
+    <div id="modal-emb-cat-error" class="error-msg"></div>
+    <div id="emb-cat-travado-hint" class="error-msg" style="display:none;background:rgba(44,110,142,.08);border-color:var(--info);color:var(--info);">
+      🔒 Esta embalagem já tem movimentações (entradas, baixas, solicitações ou saldo). Cliente e código ficam travados para não quebrar o histórico — edite os demais campos normalmente.
+    </div>
+    <div class="form-grid">
+      <div class="field full"><label>CLIENTE *</label>
+        <select id="emb-cat-cli">
+          <option value="">— Selecione o cliente —</option>
+        </select>
+      </div>
+      <div class="field"><label>CÓDIGO DA EMBALAGEM *</label><input type="text" id="emb-cat-cod" placeholder="Ex: EMB-001" oninput="this.value=this.value.toUpperCase()"></div>
+      <div class="field"><label>DESCRIÇÃO *</label><input type="text" id="emb-cat-desc" placeholder="Descrição da embalagem"></div>
+      <div class="field"><label>NOME INTERNO</label><input type="text" id="emb-cat-nome-int" placeholder="Nome interno"></div>
+      <div class="field"><label>CÓD. DATASUL</label><input type="number" id="emb-cat-datasul" placeholder="000000" min="0" step="1"></div>
+      <div class="field"><label>QTD. POR FARDO</label><input type="number" id="emb-cat-fardo" placeholder="0" min="0" step="1"></div>
+      <div class="field"><label>VALOR DA EMBALAGEM (R$)</label><input type="number" id="emb-cat-valor" placeholder="0,00" step="0.01" min="0"></div>
+      <div class="field full"><label>ITENS DA EMBALAGEM</label><textarea id="emb-cat-itens" placeholder="Descreva os itens contidos na embalagem…" rows="3"></textarea></div>
+      <div class="field full"><label>IMAGEM DE CAPA</label>
+        <div class="single-upload-zone" id="emb-cat-capa-zone" onclick="document.getElementById('emb-cat-capa-input').click()">
+          <input type="file" id="emb-cat-capa-input" accept="image/*" onchange="handleEmbCapa(this)" style="display:none">
+          <img id="emb-cat-capa-preview" class="capa-preview-img" style="display:none;">
+          <span class="su-placeholder" id="emb-cat-capa-placeholder">📷 Selecionar imagem de capa (opcional)</span>
+        </div>
+      </div>
+    </div>
+    <input type="hidden" id="emb-cat-edit-id">
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-primary" id="btn-salvar-embcat" style="flex:1" onclick="salvarEmbCat()">Salvar Embalagem</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-emb-cat')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL EXCLUIR EMB CAT -->
+<div id="modal-delete-emb" class="modal-overlay">
+  <div class="modal" style="max-width:420px;">
+    <button class="modal-close" onclick="closeModal('modal-delete-emb')">✕</button>
+    <div class="modal-title" style="color:var(--warn);">🗑 Excluir Embalagem</div>
+    <div style="color:var(--text2);font-size:13px;margin-bottom:20px;line-height:1.6;">Confirme com a senha de administrador:</div>
+    <div id="delete-emb-error" class="error-msg"></div>
+    <div class="field"><label>SENHA DE ADMINISTRADOR</label>
+      <div class="pass-wrap"><input type="password" id="delete-emb-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')confirmDeleteEmb()"><button class="pass-toggle" type="button" onclick="togglePass('delete-emb-pass',this)">👁</button></div>
+    </div>
+    <input type="hidden" id="delete-emb-id">
+    <div style="display:flex;gap:10px;margin-top:4px;">
+      <button class="btn btn-danger" style="flex:1" onclick="confirmDeleteEmb()">Confirmar</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-delete-emb')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL IMPORTAR PLANILHA DE EMBALAGENS -->
+<div id="modal-import-emb" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-import-emb')">✕</button>
+    <div class="modal-title">📥 Importar planilha de embalagens</div>
+    <div id="modal-import-emb-error" class="error-msg"></div>
+    <div id="modal-import-emb-success" class="success-msg"></div>
+    <div class="field"><label>CLIENTE *</label>
+      <select id="import-emb-cli">
+        <option value="">— Selecione o cliente —</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>ARQUIVO EXCEL (.xlsx / .xls)</label>
+      <div class="single-upload-zone" id="import-emb-zone" onclick="document.getElementById('import-emb-file').click()">
+        <input type="file" id="import-emb-file" accept=".xlsx,.xls" onchange="handleImportEmbFile(this)" style="display:none">
+        <span class="su-placeholder" id="import-emb-file-label">📄 Selecionar arquivo…</span>
+      </div>
+    </div>
+    <div style="color:var(--text2);font-size:12px;line-height:1.6;margin-top:4px;">
+      A planilha deve conter as colunas nesta ordem, a partir da 2ª linha (a 1ª é o cabeçalho):<br>
+      <span style="font-family:var(--font-mono);color:var(--text3)">CÓDIGO DA EMBALAGEM · DESCRIÇÃO · NOME INTERNO · CÓD DATASUL · QUANT POR FARDO · VALOR DA EMBALAGEM · ITENS DA EMBALAGEM</span><br>
+      Colunas vazias serão consideradas como 0. Embalagens com o mesmo código já cadastradas para o cliente selecionado serão atualizadas; as demais serão criadas.
+    </div>
+    <div id="import-emb-summary" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:14px;font-size:13px;color:var(--text2);"></div>
+    <input type="hidden" id="import-emb-edit-id">
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-processar-import-emb" onclick="processarImportEmb()" disabled>Processar planilha</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-import-emb')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL IMPORTAR PLANILHA DE CONTAGEM DE INVENTÁRIO -->
+<div id="modal-import-inv" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-import-inv')">✕</button>
+    <div class="modal-title">📥 Importar Contagem de Inventário</div>
+    <div id="modal-import-inv-error" class="error-msg"></div>
+    <div id="modal-import-inv-success" class="success-msg"></div>
+    <div class="detail-grid" style="margin-bottom:6px;">
+      <div class="detail-item"><label>CLIENTE</label><span id="import-inv-cliente-nome">–</span></div>
+    </div>
+    <div class="field">
+      <label>ARQUIVO EXCEL (.xlsx / .xls)</label>
+      <div class="single-upload-zone" id="import-inv-zone" onclick="document.getElementById('import-inv-file').click()">
+        <input type="file" id="import-inv-file" accept=".xlsx,.xls" onchange="handleImportInvFile(this)" style="display:none">
+        <span class="su-placeholder" id="import-inv-file-label">📄 Selecionar arquivo…</span>
+      </div>
+    </div>
+    <div style="color:var(--text2);font-size:12px;line-height:1.6;margin-top:4px;">
+      A planilha deve conter as colunas nesta ordem, a partir da 2ª linha (a 1ª é o cabeçalho):<br>
+      <span style="font-family:var(--font-mono);color:var(--text3)">CÓDIGO DA EMBALAGEM · QUANTIDADE VAZIAS · QUANTIDADE CHEIAS</span><br>
+      Os valores serão usados apenas para <strong>pré-preencher</strong> a tela de Inventário — nada é gravado no banco de dados até você clicar em "Confirmar Inventário". Códigos não encontrados no catálogo deste cliente serão listados como não localizados.
+    </div>
+    <div id="import-inv-summary" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:14px;font-size:13px;color:var(--text2);"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-processar-import-inv" onclick="processarImportInv()" disabled>Aplicar na tela de Inventário</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-import-inv')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL BAIXA DE SALDO -->
+<div id="modal-baixa" class="modal-overlay">
+  <div class="modal" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modal-baixa')">✕</button>
+    <div class="modal-title">📉 Realizar Baixa de Saldo</div>
+    <div id="modal-baixa-error" class="error-msg"></div>
+    <div class="detail-grid" style="margin-bottom:16px;">
+      <div class="detail-item"><label>CLIENTE</label><span id="baixa-info-cliente">–</span></div>
+      <div class="detail-item"><label>EMBALAGEM</label><span id="baixa-info-embalagem">–</span></div>
+      <div class="detail-item"><label>SALDO VAZIO DISPONÍVEL</label><span id="baixa-info-saldo-vazio" style="font-family:var(--font-mono);font-weight:700;color:var(--info)">0</span></div>
+      <div class="detail-item"><label>SALDO CHEIO DISPONÍVEL</label><span id="baixa-info-saldo-cheio" style="font-family:var(--font-mono);font-weight:700;color:var(--accent)">0</span></div>
+      <div class="detail-item" style="grid-column:1/-1"><label>DATA / HORA <span style="color:var(--accent);font-size:10px">AUTO</span></label><span id="baixa-info-data">–</span></div>
+    </div>
+    <div class="field"><label>USUÁRIO <span style="color:var(--accent);font-size:10px">AUTO</span></label><input type="text" id="baixa-usuario" readonly></div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:16px;">
+      <div class="field" style="margin:0;"><label>QTD. A BAIXAR · <span style="color:var(--info)">VAZIAS</span></label><input type="number" id="baixa-qtd-vazias" min="0" step="1" value="0" oninput="validateBaixaForm()"></div>
+      <div class="field" style="margin:0;"><label>QTD. A BAIXAR · <span style="color:var(--accent)">CHEIAS</span></label><input type="number" id="baixa-qtd-cheias" min="0" step="1" value="0" oninput="validateBaixaForm()"></div>
+    </div>
+    <div class="field"><label>MOTIVO / OBSERVAÇÃO</label><textarea id="baixa-obs" rows="2" placeholder="Opcional…"></textarea></div>
+    <input type="hidden" id="baixa-cli-id">
+    <input type="hidden" id="baixa-codigo">
+    <input type="hidden" id="baixa-emb-cat-id">
+    <input type="hidden" id="baixa-saldo-vazio-max">
+    <input type="hidden" id="baixa-saldo-cheio-max">
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-confirmar-baixa" onclick="confirmarBaixa()" disabled>Confirmar Baixa</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-baixa')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL ATENDER SOLICITAÇÃO -->
+<div id="modal-atender" class="modal-overlay">
+  <div class="modal" style="max-width:460px;">
+    <button class="modal-close" onclick="closeModal('modal-atender')">✕</button>
+    <div class="modal-title">✅ Atender Solicitação</div>
+    <div id="modal-atender-error" class="error-msg"></div>
+    <div class="detail-grid" style="margin-bottom:16px;">
+      <div class="detail-item"><label>CLIENTE</label><span id="atender-info-cliente">–</span></div>
+      <div class="detail-item"><label>EMBALAGEM</label><span id="atender-info-embalagem">–</span></div>
+      <div class="detail-item"><label>QTD. SOLICITADA</label><span id="atender-info-qtd-sol">0</span></div>
+      <div class="detail-item"><label>SALDO DISPONÍVEL</label><span id="atender-info-saldo" style="font-family:var(--font-mono);color:var(--accent)">0</span></div>
+    </div>
+    <div class="field"><label>USUÁRIO <span style="color:var(--accent);font-size:10px">AUTO</span></label><input type="text" id="atender-usuario" readonly></div>
+    <div class="field"><label>QUANTIDADE ENTREGUE *</label><input type="number" id="atender-qtd" min="1" step="1" placeholder="0"></div>
+    <input type="hidden" id="atender-sol-id">
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-confirmar-atender" onclick="confirmarAtender()">Confirmar Atendimento</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-atender')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL RECUSAR SOLICITAÇÃO -->
+<div id="modal-recusar" class="modal-overlay">
+  <div class="modal" style="max-width:460px;">
+    <button class="modal-close" onclick="closeModal('modal-recusar')">✕</button>
+    <div class="modal-title" style="color:var(--warn);">✕ Recusar Solicitação</div>
+    <div id="modal-recusar-error" class="error-msg"></div>
+    <div class="detail-grid" style="margin-bottom:16px;">
+      <div class="detail-item"><label>CLIENTE</label><span id="recusar-info-cliente">–</span></div>
+      <div class="detail-item"><label>EMBALAGEM</label><span id="recusar-info-embalagem">–</span></div>
+      <div class="detail-item"><label>QTD. SOLICITADA</label><span id="recusar-info-qtd-sol">0</span></div>
+    </div>
+    <div class="field"><label>MOTIVO DA RECUSA *</label><textarea id="recusar-motivo" rows="3" placeholder="Descreva o motivo da recusa…"></textarea></div>
+    <input type="hidden" id="recusar-sol-id">
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-danger" style="flex:1" id="btn-confirmar-recusar" onclick="confirmarRecusar()">Confirmar Recusa</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-recusar')">Cancelar</button>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL DETALHES SOLICITAÇÃO -->
+<!-- MODAL CONCLUIR SOLICITAÇÃO DE NF -->
+<div id="modal-concluir-nf" class="modal-overlay">
+  <div class="modal" style="max-width:640px;">
+    <button class="modal-close" onclick="closeModal('modal-concluir-nf')">✕</button>
+    <div class="modal-title">✅ Concluir Solicitação de NF</div>
+    <div id="modal-concluir-nf-error" class="error-msg"></div>
+    <div class="detail-grid" style="margin-bottom:16px;">
+      <div class="detail-item"><label>CLIENTE</label><span id="concluir-nf-cliente">–</span></div>
+      <div class="detail-item"><label>TIPO</label><span id="concluir-nf-tipo">–</span></div>
+    </div>
+    <div class="field"><label>TRANSPORTADORA *</label><input type="text" id="concluir-nf-transportadora" placeholder="Nome da transportadora"></div>
+    <div class="field"><label>NÚMERO DA NOTA FISCAL *</label><input type="text" id="concluir-nf-numero" placeholder="Ex: 123456"></div>
+    <div style="margin-top:14px;">
+      <div class="form-card-title" style="font-size:13px;margin-bottom:10px;">Itens (você pode corrigir tipo/quantidade antes de confirmar)</div>
+      <div id="concluir-nf-itens"></div>
+    </div>
+    <input type="hidden" id="concluir-nf-id">
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-confirmar-concluir-nf" onclick="confirmarConcluirNF()">✓ Confirmar Conclusão</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-concluir-nf')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-sol-detail" class="modal-overlay">
+  <div class="modal" style="max-width:480px;">
+    <button class="modal-close" onclick="closeModal('modal-sol-detail')">✕</button>
+    <div class="modal-title">Detalhes da Solicitação</div>
+    <div class="detail-grid" id="modal-sol-detail-content"></div>
+  </div>
+</div>
+ 
+<!-- MODAL EXPORTAR RELATÓRIO DE AUDITORIA -->
+<div id="modal-exportar-auditoria" class="modal-overlay">
+  <div class="modal" style="max-width:600px;">
+    <button class="modal-close" onclick="closeModal('modal-exportar-auditoria')">✕</button>
+    <div class="modal-title">🧾 Exportar Relatório de Auditoria</div>
+    <div id="modal-exportar-auditoria-error" class="error-msg"></div>
+    <div class="form-grid">
+      <div class="field"><label>PERÍODO DE</label><input type="date" id="aud-data-ini"></div>
+      <div class="field"><label>PERÍODO ATÉ</label><input type="date" id="aud-data-fim"></div>
+      <div class="field full">
+        <label style="display:flex;align-items:center;justify-content:space-between;">
+          TIPOS DE EVENTO
+          <span style="display:flex;align-items:center;gap:6px;font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text2);cursor:pointer;">
+            <input type="checkbox" id="aud-tipo-todos" checked onchange="toggleAllTipoEventoAudit(this.checked)" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Selecionar Todos
+          </span>
+        </label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;">
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;"><input type="checkbox" class="aud-tipo-chk" data-value="CADASTRO_NOVO" checked onchange="syncTipoTodosCheckbox()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Cadastro Novo</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;"><input type="checkbox" class="aud-tipo-chk" data-value="EDICAO_CADASTRO" checked onchange="syncTipoTodosCheckbox()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Edição de Cadastro</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;"><input type="checkbox" class="aud-tipo-chk" data-value="EXCLUSAO_CADASTRO" checked onchange="syncTipoTodosCheckbox()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Exclusão de Cadastro</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;"><input type="checkbox" class="aud-tipo-chk" data-value="ENTRADA" checked onchange="syncTipoTodosCheckbox()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Entrada de Estoque</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;"><input type="checkbox" class="aud-tipo-chk" data-value="SAIDA_BAIXA" checked onchange="syncTipoTodosCheckbox()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Saída – Baixa Manual</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;"><input type="checkbox" class="aud-tipo-chk" data-value="SAIDA_SOLICITACAO" checked onchange="syncTipoTodosCheckbox()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Saída – Solicitação Atendida</label>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;"><input type="checkbox" class="aud-tipo-chk" data-value="AJUSTE_INVENTARIO" checked onchange="syncTipoTodosCheckbox()" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"> Ajuste de Inventário</label>
+        </div>
+      </div>
+      <div class="field full"><label>CLIENTES <span style="color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0;">(nenhum selecionado = todos)</span></label>
+        <select id="aud-clientes" multiple style="height:120px;"></select>
+      </div>
+      <div class="field full"><label>CÓDIGO(S) DO ITEM <span style="color:var(--text2);font-weight:400;text-transform:none;letter-spacing:0;">(separe por vírgula · vazio = todos)</span></label>
+        <input type="text" id="aud-codigo" placeholder="Ex: EMB-001, EMB-002">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-gerar-excel-auditoria" onclick="exportarRelatorioExcel()">📊 Gerar e Baixar Excel</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-exportar-auditoria')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL HISTÓRICO DE MOVIMENTAÇÕES -->
+<div id="modal-historico" class="modal-overlay">
+  <div class="modal" style="max-width:min(1025px,95vw);">
+    <button class="modal-close" onclick="closeModal('modal-historico')">✕</button>
+    <div class="modal-title">📜 Histórico de Movimentações</div>
+    <div class="detail-grid" style="margin-bottom:18px;">
+      <div class="detail-item"><label>EMBALAGEM</label><span id="hist-info-embalagem">–</span></div>
+      <div class="detail-item"><label>CLIENTE</label><span id="hist-info-cliente">–</span></div>
+    </div>
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th class="sortable" onclick="sortHistorico('codigo')">Embalagem<span class="sort-ind" id="sort-ind-hist-codigo"></span></th>
+            <th class="sortable" onclick="sortHistorico('cliente')">Cliente<span class="sort-ind" id="sort-ind-hist-cliente"></span></th>
+            <th class="sortable" onclick="sortHistorico('qtd')">Quantidade<span class="sort-ind" id="sort-ind-hist-qtd"></span></th>
+            <th class="sortable" onclick="sortHistorico('tipo')">Tipo<span class="sort-ind" id="sort-ind-hist-tipo"></span></th>
+            <th class="sortable" onclick="sortHistorico('usuario')">Usuário<span class="sort-ind" id="sort-ind-hist-usuario"></span></th>
+            <th class="sortable" onclick="sortHistorico('data')">Data / Hora<span class="sort-ind" id="sort-ind-hist-data"></span></th>
+          </tr></thead>
+          <tbody id="historico-grid"></tbody>
+        </table>
+      </div>
+      <div id="historico-empty" class="empty-state" style="display:none;"><div class="empty-icon">📭</div><p>Nenhuma movimentação encontrada</p></div>
+    </div>
+    <div class="pag-bar" id="historico-pag-bar" style="display:none;">
+      <div class="pag-info" id="historico-pag-info">–</div>
+      <div class="pag-btns">
+        <button class="btn btn-secondary btn-sm" id="hist-btn-prev" onclick="gotoHistoricoPage(-1)">‹ Anterior</button>
+        <button class="btn btn-secondary btn-sm" id="hist-btn-next" onclick="gotoHistoricoPage(1)">Próxima ›</button>
+      </div>
+    </div>
+  </div>
+</div>
+ 
+<!-- MODAL NOTIFICAÇÕES -->
+<div id="modal-notificacoes" class="modal-overlay">
+  <div class="modal" style="max-width:460px;">
+    <button class="modal-close" onclick="closeModal('modal-notificacoes')">✕</button>
+    <div class="modal-title">🔔 Notificações</div>
+    <div id="notif-permissao-status" style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6;">–</div>
+    <button class="btn btn-primary" id="btn-ativar-notif" style="width:100%;margin-bottom:20px;" onclick="solicitarPermissaoNotificacao()">🔔 Ativar Notificações</button>
+    <div class="config-row">
+      <div>
+        <div class="config-row-title">Solicitações de Embalagem</div>
+        <div class="config-row-sub">Nova solicitação, atendimento e recusa.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="notif-toggle-solicitacoes" onchange="onNotifToggleChange('solicitacoes', this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="config-row">
+      <div>
+        <div class="config-row-title">Recebimento de Embalagens</div>
+        <div class="config-row-sub">Novo registro de entrada de carga (+Registro).</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="notif-toggle-recebimentos" onchange="onNotifToggleChange('recebimentos', this.checked)">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- BANNER DE SOLICITAÇÃO DE PERMISSÃO DE NOTIFICAÇÃO -->
+<div id="notif-banner">
+  <div class="nb-text">🔔 Ative as notificações para saber, em tempo real, de novas solicitações e recebimentos de embalagens.</div>
+  <div class="nb-btns">
+    <button class="btn btn-primary btn-sm" onclick="solicitarPermissaoNotificacao()">Ativar</button>
+    <button class="btn btn-secondary btn-sm" onclick="dispensarNotifBanner()">Agora não</button>
+  </div>
+</div>
+
+<!-- IMG VIEWER -->
+<div id="img-viewer">
+  <button id="img-viewer-close" onclick="closeImgViewer()">✕ Fechar</button>
+  <img id="img-viewer-img" src="" alt="">
+</div>
+<div class="toast" id="toast"></div>
+ 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script type="module" src="app.js"></script>
+<script src="responsive.js"></script>  
+</body>
+</html>

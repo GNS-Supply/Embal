@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Planejamento de Embalagens · Magius</title>
+
+<!-- Reaproveita EXATAMENTE as mesmas folhas de estilo do sistema principal, sem alterá-las -->
+<link id="theme-magius" rel="stylesheet" href="style.css">
+<link id="theme-yms" rel="stylesheet" href="style-yms.css" disabled>
+<link rel="stylesheet" href="responsive.css">
+
+<style>
+  /* Estilos exclusivos desta página nova — nomes próprios (prefixo pl-) para nunca colidir
+     com nada do sistema principal, mesmo que os dois arquivos algum dia coexistam numa aba. */
+  .pl-page { display: none; padding: 28px; max-width: 1900px; margin: 0 auto; }
+  .pl-page.active { display: block; animation: fadeIn .25s ease; }
+  .pl-nav-tab { position: relative; }
+  .pl-nav-tab.active::after { content:''; position:absolute; left:0; right:0; bottom:-1px; height:3px; background:var(--accent); border-radius:2px 2px 0 0; }
+  .pl-nav-tab.active { color: var(--accent); }
+  #pl-loading { display:flex; align-items:center; justify-content:center; min-height:60vh; color:var(--text2); font-size:14px; }
+  #pl-modulo-desabilitado { display:none; flex-direction:column; align-items:center; justify-content:center; min-height:70vh; text-align:center; padding:32px; color:var(--text2); }
+  #pl-modulo-desabilitado .icon { font-size:40px; margin-bottom:16px; }
+  .pl-secao-titulo { font-family:var(--font-display); font-size:13px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--accent); margin-bottom:12px; }
+</style>
+</head>
+<body>
+
+<div id="pl-loading">Carregando…</div>
+
+<div id="pl-modulo-desabilitado">
+  <div class="icon">🔒</div>
+  <p>O módulo de Planejamento de Embalagens está desabilitado no momento.<br>Fale com um administrador para habilitá-lo.</p>
+  <a href="index.html" class="btn btn-secondary" style="margin-top:16px;">← Voltar ao sistema</a>
+</div>
+
+<div id="pl-app" style="display:none;">
+  <div class="topbar">
+    <div class="topbar-brand">📊 Planejamento de Embalagens</div>
+    <div class="topbar-right">
+      <div class="user-badge" style="display:flex;flex-direction:column;align-items:flex-start;justify-content:center;line-height:1.35;gap:1px;">
+        <span id="pl-topbar-name" style="font-size:13px;font-weight:700;color:#FFFFFF;">–</span>
+        <span id="pl-topbar-role" class="role-tag" style="background:none;color:rgba(255,255,255,.6);padding:0;text-transform:lowercase;font-weight:400;font-size:10px;"></span>
+      </div>
+      <a href="index.html" class="btn btn-secondary btn-sm">← Voltar ao sistema</a>
+      <button class="btn btn-secondary btn-sm" onclick="doLogoutPl()">Sair</button>
+    </div>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab pl-nav-tab active" id="pl-nav-relacao" onclick="switchPlTab('relacao')">🔗 Relação Item × Embalagem</button>
+    <button class="nav-tab pl-nav-tab" id="pl-nav-demanda" onclick="switchPlTab('demanda')">📈 Projeção de Demanda</button>
+    <button class="nav-tab pl-nav-tab" id="pl-nav-periodo" onclick="switchPlTab('periodo')">🧮 Cálculo por Período</button>
+    <button class="nav-tab pl-nav-tab" id="pl-nav-comparacao" onclick="switchPlTab('comparacao')">📊 Comparação com Estoque</button>
+  </div>
+
+  <div id="pl-aviso-modulo-desabilitado-admin" class="error-msg" style="display:none;max-width:1900px;margin:16px auto 0;background:rgba(232,163,61,.08);border-color:var(--warn);color:var(--warn);">
+    ⚠ Este módulo está desabilitado para os demais usuários. Só você (administrador) está vendo esta tela agora. Habilite em Administração → Módulos do sistema.
+  </div>
+
+  <!-- ═══════════ ABA 1: RELAÇÃO ITEM × EMBALAGEM ═══════════ -->
+  <div id="pl-tab-relacao" class="pl-page active">
+    <div class="page-header">
+      <div><div class="page-title">Relação Item × Embalagem</div><div class="page-sub">Cadastre quais itens usam quais embalagens, por cliente, e o multiplicador de cada um</div></div>
+    </div>
+
+    <div class="form-card pl-somente-escrita">
+      <div class="form-card-title">➕ Nova Relação</div>
+      <div id="relacao-form-error" class="error-msg"></div>
+      <div class="form-grid">
+        <div class="field"><label>CLIENTE *</label>
+          <select id="rel-cliente" onchange="onRelClienteChange()"><option value="">— Selecione —</option></select>
+        </div>
+        <div class="field"><label>EMBALAGEM *</label>
+          <select id="rel-embalagem" disabled><option value="">— Selecione o cliente acima —</option></select>
+        </div>
+        <div class="field"><label>CÓDIGO DO ITEM *</label><input type="text" id="rel-item" placeholder="Ex: ITEM001" oninput="this.value=this.value.toUpperCase()"></div>
+        <div class="field"><label>MULTIPLICADOR *</label><input type="number" id="rel-multiplicador" min="1" step="1" placeholder="Ex: 20"></div>
+      </div>
+      <div style="color:var(--text2);font-size:12px;margin-top:2px;">A embalagem precisa já estar cadastrada no Catálogo para o cliente selecionado. A primeira embalagem cadastrada para um item vira automaticamente a padrão — as demais ficam como alternativas.</div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btn-salvar-relacao" onclick="salvarRelacao()">✓ Salvar Relação</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-import-relacao').classList.add('open')">📥 Importar Planilha</button>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="pl-secao-titulo">Consultar</div>
+      <div class="form-grid" style="align-items:end;">
+        <div class="field"><label>BUSCAR POR</label>
+          <select id="busca-relacao-modo">
+            <option value="item">Código do Item</option>
+            <option value="embalagem">Código da Embalagem</option>
+          </select>
+        </div>
+        <div class="field"><label>CÓDIGO</label><input type="text" id="busca-relacao-termo" placeholder="Digite e busque…" oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')buscarRelacoes()"></div>
+        <div class="field" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="buscarRelacoes()">🔍 Buscar</button></div>
+      </div>
+      <div id="pl-consulta-results" style="margin-top:14px;"><div class="empty-state"><p>Digite um código e clique em Buscar.</p></div></div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="field"><label>FILTRAR POR CLIENTE</label>
+        <select id="filter-rel-cliente" onchange="renderRelacoes()"><option value="">Todos os clientes</option></select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table class="table-solicitacoes">
+          <thead><tr><th>Cliente</th><th>Item</th><th>Embalagem</th><th>Multiplicador</th><th>Situação</th><th>Ações</th></tr></thead>
+          <tbody id="pl-relacoes-grid"></tbody>
+        </table>
+      </div>
+      <div id="pl-relacoes-empty" class="empty-state" style="display:none;"><div class="empty-icon">🔗</div><p>Nenhuma relação cadastrada ainda</p></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ ABA 2: PROJEÇÃO DE DEMANDA ═══════════ -->
+  <div id="pl-tab-demanda" class="pl-page">
+    <div class="page-header">
+      <div><div class="page-title">Projeção de Demanda</div><div class="page-sub">Importe a planilha de demanda por item, cliente e data de entrega</div></div>
+    </div>
+
+    <div class="form-card pl-somente-escrita">
+      <div class="form-card-title">📥 Importar Projeção de Demanda</div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:14px;">Importar uma nova planilha <strong>substitui completamente</strong> a demanda atual — não é somada à anterior.</p>
+      <button class="btn btn-secondary" onclick="document.getElementById('modal-import-demanda').classList.add('open')">📥 Importar Planilha de Demanda</button>
+    </div>
+
+    <div class="form-card">
+      <div class="pl-secao-titulo">Resumo da Demanda Importada</div>
+      <div id="pl-demanda-resumo"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ ABA 3: CÁLCULO POR PERÍODO ═══════════ -->
+  <div id="pl-tab-periodo" class="pl-page">
+    <div class="page-header">
+      <div><div class="page-title">Cálculo de Necessidade por Período</div><div class="page-sub">Soma a demanda do período e calcula quantas embalagens (padrão) serão necessárias</div></div>
+    </div>
+
+    <div class="form-card">
+      <div id="pl-periodo-error" class="error-msg"></div>
+      <div class="form-grid" style="align-items:end;">
+        <div class="field"><label>DATA INICIAL *</label><input type="date" id="pl-periodo-inicio"></div>
+        <div class="field"><label>DATA FINAL *</label><input type="date" id="pl-periodo-fim"></div>
+        <div class="field" style="flex:0 0 auto;"><button class="btn btn-primary" onclick="calcularPeriodo()">🧮 Calcular</button></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap;">
+      <button class="btn btn-secondary btn-sm" onclick="exportarPeriodoXLSX()">⬇ Exportar Excel (.xlsx)</button>
+      <button class="btn btn-primary btn-sm" id="pl-btn-ir-comparacao" style="display:none;" onclick="irParaComparacaoComPeriodo()">📊 Ver Comparação com Estoque →</button>
+    </div>
+
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table class="table-solicitacoes">
+          <thead><tr><th>Cliente</th><th>Item</th><th>Demanda no Período</th><th>Embalagem Padrão</th><th>Multiplicador</th><th>Qtd. Necessária</th></tr></thead>
+          <tbody id="pl-periodo-grid"></tbody>
+        </table>
+      </div>
+      <div id="pl-periodo-empty" class="empty-state" style="display:none;"><div class="empty-icon">🧮</div><p>Selecione um período e clique em Calcular</p></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ ABA 4: COMPARAÇÃO COM ESTOQUE ═══════════ -->
+  <div id="pl-tab-comparacao" class="pl-page">
+    <div class="page-header">
+      <div><div class="page-title">Comparação com Estoque</div><div class="page-sub">Estoque disponível (vazias + cheias) versus necessidade calculada, por cliente e embalagem</div></div>
+    </div>
+
+    <div class="form-card">
+      <div id="pl-comparacao-error" class="error-msg"></div>
+      <div id="pl-comparacao-aviso-sem-padrao" class="error-msg" style="display:none;background:rgba(232,163,61,.08);border-color:var(--warn);color:var(--warn);"></div>
+      <div class="form-grid" style="align-items:end;">
+        <div class="field"><label>DATA INICIAL *</label><input type="date" id="comp-periodo-inicio"></div>
+        <div class="field"><label>DATA FINAL *</label><input type="date" id="comp-periodo-fim"></div>
+        <div class="field"><label>PLANTA (estoque de)</label><select id="comp-planta"></select></div>
+        <div class="field" style="flex:0 0 auto;"><button class="btn btn-primary" id="btn-calcular-comparacao" onclick="calcularComparacao()">✓ Calcular Comparação</button></div>
+      </div>
+    </div>
+
+    <div style="margin:0 0 14px;">
+      <button class="btn btn-secondary btn-sm" onclick="exportarComparacaoXLSX()">⬇ Exportar Excel (.xlsx)</button>
+    </div>
+
+    <div class="table-wrap">
+      <div style="overflow-x:auto;">
+        <table class="table-solicitacoes">
+          <thead><tr><th>Cliente</th><th>Embalagem</th><th>Vazias</th><th>Cheias</th><th>Disponível</th><th>Necessário</th><th>Faltante</th><th>Excedente</th></tr></thead>
+          <tbody id="pl-comparacao-grid"></tbody>
+        </table>
+      </div>
+      <div id="pl-comparacao-empty" class="empty-state" style="display:none;"><div class="empty-icon">📊</div><p>Selecione o período e a planta, depois clique em Calcular</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: IMPORTAR RELAÇÃO -->
+<div id="modal-import-relacao" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-import-relacao')">✕</button>
+    <div class="modal-title">📥 Importar Relação Item × Embalagem</div>
+    <div id="modal-import-relacao-error" class="error-msg"></div>
+    <div id="modal-import-relacao-success" class="success-msg"></div>
+    <div class="field">
+      <label>ARQUIVO EXCEL (.xlsx / .xls)</label>
+      <div class="single-upload-zone" onclick="document.getElementById('import-relacao-file').click()">
+        <input type="file" id="import-relacao-file" accept=".xlsx,.xls" onchange="handleImportRelacaoFile(this)" style="display:none">
+        <span class="su-placeholder" id="import-relacao-file-label">📄 Selecionar arquivo…</span>
+      </div>
+    </div>
+    <div style="color:var(--text2);font-size:12px;line-height:1.6;margin-top:4px;">
+      A planilha deve conter as colunas nesta ordem, a partir da 2ª linha (a 1ª é o cabeçalho):<br>
+      <span style="font-family:var(--font-mono);color:var(--text3)">CLIENTE · CÓDIGO DA EMBALAGEM · CÓDIGO DO ITEM · MULTIPLICADOR</span><br>
+      Cliente e embalagem precisam já existir nos cadastros do sistema. Combinações repetidas (mesmo cliente+item+embalagem) são ignoradas.
+      <br><a href="#" onclick="baixarModeloRelacao();return false;" style="color:var(--accent);">⬇ Baixar planilha modelo</a>
+    </div>
+    <div id="import-relacao-summary" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:14px;font-size:13px;color:var(--text2);"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-processar-import-relacao" onclick="processarImportRelacao()" disabled>Processar Importação</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-import-relacao')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: IMPORTAR DEMANDA -->
+<div id="modal-import-demanda" class="modal-overlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-import-demanda')">✕</button>
+    <div class="modal-title">📥 Importar Projeção de Demanda</div>
+    <div id="modal-import-demanda-error" class="error-msg"></div>
+    <div id="modal-import-demanda-success" class="success-msg"></div>
+    <div class="field">
+      <label>ARQUIVO EXCEL (.xlsx / .xls)</label>
+      <div class="single-upload-zone" onclick="document.getElementById('import-demanda-file').click()">
+        <input type="file" id="import-demanda-file" accept=".xlsx,.xls" onchange="handleImportDemandaFile(this)" style="display:none">
+        <span class="su-placeholder" id="import-demanda-file-label">📄 Selecionar arquivo…</span>
+      </div>
+    </div>
+    <div style="color:var(--text2);font-size:12px;line-height:1.6;margin-top:4px;">
+      A planilha deve ter colunas com cabeçalhos identificáveis: algo com "Item", algo com "Cliente", algo com "Data" e algo com "Quantidade"/"Qtd" — a ordem das colunas não importa.<br>
+      <strong style="color:var(--warn);">Atenção:</strong> importar substitui TODA a demanda atual.
+      <br><a href="#" onclick="baixarModeloDemanda();return false;" style="color:var(--accent);">⬇ Baixar planilha modelo</a>
+    </div>
+    <div id="import-demanda-summary" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:14px;font-size:13px;color:var(--text2);"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-primary" style="flex:1" id="btn-processar-import-demanda" onclick="processarImportDemanda()" disabled>Substituir Demanda pela Planilha</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-import-demanda')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="pl-toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script type="module" src="planejamento.js"></script>
+</body>
+</html>
