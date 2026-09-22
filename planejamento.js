@@ -102,6 +102,7 @@ async function aplicarTemaAtual(){
 
 // ── AUTENTICAÇÃO / GATE DE ACESSO ───────────────────────────────────
 onAuthStateChanged(auth, async (user) => {
+ try {
   if (!user) { window.location.href = 'index.html'; return; }
   window._plCurrentUser = user;
 
@@ -122,8 +123,10 @@ onAuthStateChanged(auth, async (user) => {
   window._plPodeEscrever = ['operador','administrador'].includes(window._plUserRole) || window._plIsAdmMaster;
   const podeAdministrar = window._plUserRole === 'administrador' || window._plIsAdmMaster;
 
-  document.getElementById('pl-topbar-name').textContent = user.displayName || user.email || '–';
-  document.getElementById('pl-topbar-role').textContent = (window._plUserRole || '').toLowerCase();
+  const elNome = document.getElementById('pl-topbar-name');
+  const elRole = document.getElementById('pl-topbar-role');
+  if (elNome) elNome.textContent = user.displayName || user.email || '–';
+  if (elRole) elRole.textContent = (window._plUserRole || '').toLowerCase();
 
   await aplicarTemaAtual();
 
@@ -165,6 +168,14 @@ onAuthStateChanged(auth, async (user) => {
   document.getElementById('pl-loading').style.display = 'none';
   document.getElementById('pl-app').style.display = 'block';
   switchPlTab('relacao');
+ } catch(e) {
+  // rede de segurança: qualquer erro não previsto acima (ex: elemento inesperado, versão de
+  // arquivo desatualizada em cache) agora aparece de forma visível, em vez de deixar a tela
+  // travada em "Carregando" para sempre sem nenhuma pista do que aconteceu.
+  console.error('[planejamento] erro fatal ao inicializar a página:', e);
+  const loadingEl = document.getElementById('pl-loading');
+  if (loadingEl) loadingEl.innerHTML = `⚠ Ocorreu um erro ao carregar esta página.<br><span style="font-size:12px;color:var(--text3);">Detalhes no console (F12): ${esc(e.message||e)}</span><br><a href="index.html" style="color:var(--accent);margin-top:10px;display:inline-block;">← Voltar ao sistema</a>`;
+ }
 });
 
 window.doLogoutPl = async () => {
