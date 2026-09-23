@@ -12,7 +12,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   getFirestore, collection, collectionGroup, addDoc, getDocs, getDoc, setDoc, deleteDoc, doc,
-  updateDoc, query, orderBy, where, serverTimestamp, runTransaction, onSnapshot
+  updateDoc, query, orderBy, where, serverTimestamp, runTransaction, onSnapshot, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getMessaging, getToken, onMessage, isSupported as fcmIsSupported
@@ -69,6 +69,6 @@ export {
   createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail,
   signOut, onAuthStateChanged, updateProfile,
   collection, collectionGroup, addDoc, getDocs, getDoc, setDoc, deleteDoc, doc, updateDoc,
-  query, orderBy, where, serverTimestamp, runTransaction, onSnapshot,
+  query, orderBy, where, serverTimestamp, runTransaction, onSnapshot, writeBatch,
   getToken
 };
