@@ -150,11 +150,20 @@ onAuthStateChanged(auth, async (user) => {
     if (avisoModulo) avisoModulo.style.display = 'none';
   }
 
-  try {
-    await Promise.all([loadClientes(), loadEmbCat(), loadPlantas(), loadRelacoes(), loadDemanda()]);
-  } catch(e) {
-    console.error('Erro ao carregar dados:', e);
-    window.showToast('Erro ao carregar dados iniciais. Recarregue a página.', true);
+  const carregamentos = [
+    ['Clientes', loadClientes()],
+    ['Catálogo de Embalagens', loadEmbCat()],
+    ['Plantas', loadPlantas()],
+    ['Relações', loadRelacoes()],
+    ['Demanda', loadDemanda()]
+  ];
+  const resultados = await Promise.allSettled(carregamentos.map(c => c[1]));
+  const falhas = resultados
+    .map((r, i) => ({ nome: carregamentos[i][0], r }))
+    .filter(x => x.r.status === 'rejected');
+  if (falhas.length) {
+    falhas.forEach(f => console.error(`Erro ao carregar ${f.nome}:`, f.r.reason));
+    window.showToast(`Erro ao carregar ${falhas.map(f=>f.nome).join(', ')}: ${falhas[0].r.reason?.message || falhas[0].r.reason}`, true);
   }
 
   popularSelects();
