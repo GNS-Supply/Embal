@@ -65,10 +65,14 @@ function parseDataFlexivel(v){
     const d = new Date(Math.round((v - 25569) * 86400 * 1000)); // serial de data do Excel
     if (!isNaN(d)) return isoDate(d);
   }
-  const s = String(v ?? '').trim();
-  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);           // DD/MM/AAAA
+  // CSV vindo de ERP costuma trazer a data como texto, às vezes com hora junto
+  // (ex: "15/03/2026 00:00:00") — tira isso antes de casar o padrão.
+  const s = String(v ?? '').trim().split(/[ T]/)[0];
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);              // DD/MM/AAAA
   if (m) return `${m[3]}-${p2(m[2])}-${p2(m[1])}`;
-  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);                  // AAAA-MM-DD
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);                  // DD/MM/AA (ano de 2 dígitos)
+  if (m) return `20${m[3]}-${p2(m[2])}-${p2(m[1])}`;
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);                    // AAAA-MM-DD
   if (m) return `${m[1]}-${p2(m[2])}-${p2(m[3])}`;
   return null;
 }
@@ -515,6 +519,16 @@ window.processarImportRelacao = async () => {
 // ══════════════════════════════════════════════════════════════════════
 // PARTE 2 — PROJEÇÃO DE DEMANDA
 // ══════════════════════════════════════════════════════════════════════
+// Formato real da planilha (16 colunas, A a P, com cabeçalho na 1ª linha):
+//   Coluna A = cliente (nome não bate com o cadastro — só guardado como referência, nunca
+//              usado para casar com nada, já que um código de item nunca se repete para
+//              outro cliente: o cliente de verdade vem da Relação já cadastrada, buscando
+//              pelo itemCodigo).
+//   Coluna E = código do item     (índice 4, base 0)
+//   Coluna J = quantidade         (índice 9)
+//   Coluna K = data de entrega    (índice 10)
+// As demais colunas (B,C,D,F,G,H,I,L,M,N,O,P) são ignoradas por completo.
+const COL_CLIENTE_REF = 0, COL_ITEM = 4, COL_QTD = 9, COL_DATA = 10;
 
 function renderResumoDemanda(){
   const el = document.getElementById('pl-demanda-resumo');
@@ -524,14 +538,12 @@ function renderResumoDemanda(){
     return;
   }
   const itens = new Set(window._plDemanda.map(d => d.itemCodigo));
-  const clientes = new Set(window._plDemanda.map(d => d.clienteId));
   const datas = window._plDemanda.map(d => d.dataEntrega).filter(Boolean).sort();
   const importadoEm = window._plDemanda[0]?.importadoEmLocal || '–';
   el.innerHTML = `
     <div class="detail-grid">
-      <div class="detail-item"><label>REGISTROS IMPORTADOS</label><span>${window._plDemanda.length}</span></div>
+      <div class="detail-item"><label>REGISTROS (JÁ SOMADOS POR ITEM+DATA)</label><span>${window._plDemanda.length}</span></div>
       <div class="detail-item"><label>ITENS DISTINTOS</label><span>${itens.size}</span></div>
-      <div class="detail-item"><label>CLIENTES DISTINTOS</label><span>${clientes.size}</span></div>
       <div class="detail-item"><label>PERÍODO COBERTO</label><span>${datas.length ? formatDataBR(datas[0]) + ' até ' + formatDataBR(datas[datas.length-1]) : '–'}</span></div>
       <div class="detail-item"><label>ÚLTIMA IMPORTAÇÃO</label><span>${esc(importadoEm)}</span></div>
     </div>`;
@@ -539,7 +551,9 @@ function renderResumoDemanda(){
 function formatDataBR(iso){ if(!iso) return '–'; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
 
 window.baixarModeloDemanda = () => {
-  const ws = XLSX.utils.aoa_to_sheet([['Código do Item','Cliente','Data de Entrega','Quantidade'],['ITEM001','Cliente Exemplo LTDA','15/03/2026',150]]);
+  const header = ['Cliente (col. A — referência)','B','C','D','Código do Item (col. E)','F','G','H','I','Quantidade (col. J)','Data de Entrega (col. K)','L','M','N','O','P'];
+  const exemplo = ['Cliente Exemplo LTDA','','','','ITEM001','','','','',150,'15/03/2026','','','','',''];
+  const ws = XLSX.utils.aoa_to_sheet([header, exemplo]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Modelo');
   XLSX.writeFile(wb, 'modelo_projecao_demanda.xlsx');
@@ -555,68 +569,68 @@ window.handleImportDemandaFile = (input) => {
   const label = document.getElementById('import-demanda-file-label');
   if (!file) { label.textContent = '📄 Selecionar arquivo…'; return; }
   label.textContent = '📄 ' + file.name;
+  const summaryEl = document.getElementById('import-demanda-summary');
+  summaryEl.style.display = 'block';
+  summaryEl.textContent = 'Lendo arquivo… (planilhas grandes podem levar alguns segundos)';
   const reader = new FileReader();
   reader.onload = (ev) => {
     try {
+      // XLSX.read entende .xlsx e .csv pelo mesmo caminho — não precisa de lógica separada por extensão
       const wb = XLSX.read(ev.target.result, { type: 'array', cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      if (rows.length < 2) { showErr(errEl, 'Planilha vazia ou sem linhas de dados.'); return; }
-      // colunas identificadas pelo NOME do cabeçalho — a ordem pode variar (ver instrução do usuário)
-      const header = rows[0];
-      const idxItem = acharColuna(header, ['item']);
-      const idxCliente = acharColuna(header, ['cliente']);
-      const idxData = acharColuna(header, ['data']);
-      const idxQtd = acharColuna(header, ['quantidade','qtd']);
-      if ([idxItem, idxCliente, idxData, idxQtd].some(i => i === -1)) {
-        showErr(errEl, 'Não encontrei todas as colunas esperadas (Código do Item, Cliente, Data de Entrega, Quantidade) no cabeçalho da planilha. Verifique os títulos das colunas.');
-        return;
-      }
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+      // linha 1 é sempre cabeçalho nesta planilha — descartada sem tentar interpretar
       const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
-      if (!dataRows.length) { showErr(errEl, 'Nenhuma linha de dados encontrada na planilha.'); return; }
-      window._plImportDemandaRows = { dataRows, idxItem, idxCliente, idxData, idxQtd };
+      if (!dataRows.length) { showErr(errEl, 'Nenhuma linha de dados encontrada (além do cabeçalho).'); summaryEl.style.display='none'; return; }
+      window._plImportDemandaRows = dataRows;
       document.getElementById('btn-processar-import-demanda').disabled = false;
-      document.getElementById('import-demanda-summary').style.display = 'block';
-      document.getElementById('import-demanda-summary').textContent = `${dataRows.length} linha(s) encontrada(s), prontas para processar.`;
-    } catch(e) { showErr(errEl, 'Erro ao ler o arquivo: ' + e.message); }
+      summaryEl.textContent = `${dataRows.length.toLocaleString('pt-BR')} linha(s) encontrada(s) (sem contar o cabeçalho), prontas para processar.`;
+    } catch(e) { showErr(errEl, 'Erro ao ler o arquivo: ' + e.message); summaryEl.style.display='none'; }
   };
-  reader.onerror = () => showErr(errEl, 'Erro ao ler o arquivo.');
+  reader.onerror = () => { showErr(errEl, 'Erro ao ler o arquivo.'); summaryEl.style.display='none'; };
   reader.readAsArrayBuffer(file);
 };
 
 window.processarImportDemanda = async () => {
   const errEl = document.getElementById('modal-import-demanda-error'); errEl.style.display = 'none';
   const okEl = document.getElementById('modal-import-demanda-success'); okEl.style.display = 'none';
-  const info = window._plImportDemandaRows;
-  if (!info?.dataRows?.length) { showErr(errEl, 'Selecione um arquivo válido.'); return; }
-  if (!confirm('Importar esta planilha vai SUBSTITUIR TODA a projeção de demanda atual (registros antigos serão apagados). Deseja continuar?')) return;
+  const summaryEl = document.getElementById('import-demanda-summary');
+  const dataRows = window._plImportDemandaRows;
+  if (!dataRows?.length) { showErr(errEl, 'Selecione um arquivo válido.'); return; }
+  if (!confirm(`Importar este arquivo (${dataRows.length.toLocaleString('pt-BR')} linha(s)) vai SUBSTITUIR TODA a projeção de demanda atual. Isso pode levar alguns minutos em arquivos grandes — não feche esta aba. Deseja continuar?`)) return;
 
   const btn = document.getElementById('btn-processar-import-demanda');
   btn.disabled = true; btn.textContent = 'Processando…';
 
-  const { dataRows, idxItem, idxCliente, idxData, idxQtd } = info;
+  // 1ª passada: valida cada linha e SOMA quantidades repetidas do mesmo item na mesma data —
+  // essencial para arquivos de ~100 mil linhas, onde o mesmo item aparece em várias linhas
+  // (pedidos diferentes) na mesma data de entrega. Isso reduz drasticamente o número de
+  // documentos gravados no Firestore (e, depois, o volume lido a cada cálculo).
   let erros = 0;
   const falhas = [];
-  const validas = [];
+  const somaPorChave = new Map(); // chave: itemCodigo + '|' + dataEntrega
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
-    const linhaPlanilha = i + 2;
-    const itemCodigo = String(row[idxItem] ?? '').trim().toUpperCase();
-    const clienteNome = String(row[idxCliente] ?? '').trim();
-    const dataEntrega = parseDataFlexivel(row[idxData]);
-    const quantidade = Number(row[idxQtd]);
+    const linhaPlanilha = i + 2; // +1 cabeçalho, +1 base 1
+    const itemCodigo = String(row[COL_ITEM] ?? '').trim().toUpperCase();
+    const dataEntrega = parseDataFlexivel(row[COL_DATA]);
+    const quantidade = Number(row[COL_QTD]);
 
-    if (!itemCodigo) { erros++; falhas.push(`Linha ${linhaPlanilha}: código do item vazio.`); continue; }
-    const cliente = window._plClientes.find(c => c.nome?.trim().toLowerCase() === clienteNome.toLowerCase());
-    if (!cliente) { erros++; falhas.push(`Linha ${linhaPlanilha}: cliente "${clienteNome}" não encontrado.`); continue; }
-    if (!dataEntrega) { erros++; falhas.push(`Linha ${linhaPlanilha}: data de entrega inválida.`); continue; }
-    if (!quantidade || quantidade <= 0) { erros++; falhas.push(`Linha ${linhaPlanilha}: quantidade inválida.`); continue; }
+    if (!itemCodigo) { erros++; if (falhas.length<50) falhas.push(`Linha ${linhaPlanilha}: coluna E (item) vazia.`); continue; }
+    if (!dataEntrega) { erros++; if (falhas.length<50) falhas.push(`Linha ${linhaPlanilha}: coluna K (data) inválida.`); continue; }
+    if (!quantidade || quantidade <= 0) { erros++; if (falhas.length<50) falhas.push(`Linha ${linhaPlanilha}: coluna J (quantidade) inválida.`); continue; }
 
-    validas.push({ itemCodigo, clienteId: cliente.id, clienteNome: cliente.nome, dataEntrega, quantidade });
+    const chave = itemCodigo + '|' + dataEntrega;
+    if (somaPorChave.has(chave)) {
+      somaPorChave.get(chave).quantidade += quantidade;
+    } else {
+      somaPorChave.set(chave, { itemCodigo, dataEntrega, quantidade, clienteRefArquivo: String(row[COL_CLIENTE_REF] ?? '').trim() });
+    }
   }
+  const validas = [...somaPorChave.values()];
 
   if (!validas.length) {
-    showErr(errEl, 'Nenhuma linha válida para importar. Verifique os erros no console (F12).');
+    showErr(errEl, 'Nenhuma linha válida para importar. Veja o console (F12) para detalhes.');
     console.warn('[importação demanda] falhas:', falhas);
     btn.disabled = false; btn.textContent = 'Substituir Demanda pela Planilha';
     return;
@@ -625,40 +639,52 @@ window.processarImportDemanda = async () => {
   try {
     // Ordem importante para segurança dos dados: primeiro GRAVA tudo de novo, e só DEPOIS apaga o
     // que existia antes — nessa ordem, se a importação falhar no meio do caminho (rede, etc.), a
-    // demanda antiga continua intacta e o usuário pode simplesmente tentar de novo. Fazer o
-    // contrário (apagar primeiro) arriscaria deixar o sistema sem nenhuma demanda em caso de falha.
+    // demanda antiga continua intacta e o usuário pode simplesmente tentar de novo.
+    summaryEl.textContent = 'Verificando demanda anterior…';
     const antigos = await getDocs(collection(db,'planejamento_demanda'));
     const idsAntigos = antigos.docs.map(d => d.ref);
 
-    // 1) grava a nova demanda em lotes (limite de 500 operações por batch do Firestore)
+    // 1) grava a nova demanda (já somada) em lotes de até 450 operações (limite do Firestore é 500)
     const importadoEmLocal = formatDt(new Date());
+    const totalLotesGravar = Math.ceil(validas.length / 450);
     let batch = writeBatch(db);
-    let opsNoBatch = 0;
+    let opsNoBatch = 0, loteAtual = 1;
     for (const v of validas) {
       const ref = doc(collection(db,'planejamento_demanda'));
-      batch.set(ref, { ...v, importadoEm: serverTimestamp(), importadoEmLocal, uid: window._plCurrentUser.uid });
+      batch.set(ref, { itemCodigo: v.itemCodigo, dataEntrega: v.dataEntrega, quantidade: v.quantidade, clienteRefArquivo: v.clienteRefArquivo, importadoEm: serverTimestamp(), importadoEmLocal, uid: window._plCurrentUser.uid });
       opsNoBatch++;
-      if (opsNoBatch === 450) { await batch.commit(); batch = writeBatch(db); opsNoBatch = 0; }
+      if (opsNoBatch === 450) {
+        await batch.commit();
+        summaryEl.textContent = `Gravando nova demanda… lote ${loteAtual} de ${totalLotesGravar}`;
+        batch = writeBatch(db); opsNoBatch = 0; loteAtual++;
+      }
     }
     if (opsNoBatch > 0) { await batch.commit(); }
 
     // 2) só agora, com a nova demanda já gravada com sucesso, apaga a que existia antes
+    const totalLotesApagar = Math.ceil(idsAntigos.length / 450);
     batch = writeBatch(db);
-    opsNoBatch = 0;
+    opsNoBatch = 0; loteAtual = 1;
     for (const ref of idsAntigos) {
       batch.delete(ref);
       opsNoBatch++;
-      if (opsNoBatch === 450) { await batch.commit(); batch = writeBatch(db); opsNoBatch = 0; }
+      if (opsNoBatch === 450) {
+        await batch.commit();
+        summaryEl.textContent = `Removendo demanda anterior… lote ${loteAtual} de ${totalLotesApagar}`;
+        batch = writeBatch(db); opsNoBatch = 0; loteAtual++;
+      }
     }
     if (opsNoBatch > 0) { await batch.commit(); }
 
+    summaryEl.textContent = 'Recarregando…';
     await loadDemanda();
     renderResumoDemanda();
     okEl.style.display = 'block';
-    okEl.textContent = `✓ Demanda substituída: ${validas.length} registro(s) importado(s), ${erros} linha(s) com erro (ignorada(s)).`;
+    okEl.textContent = `✓ Demanda substituída: ${dataRows.length.toLocaleString('pt-BR')} linha(s) lida(s) → ${validas.length.toLocaleString('pt-BR')} registro(s) gravado(s) (já somados por item+data), ${erros} linha(s) com erro (ignorada(s)).`;
+    summaryEl.style.display = 'none';
     if (falhas.length) {
-      console.warn('[importação demanda] falhas:', falhas);
-      showErr(errEl, `Algumas linhas não foram importadas: ` + falhas.slice(0,4).join(' | ') + (falhas.length > 4 ? ` (+${falhas.length-4} outra(s))` : ''));
+      console.warn('[importação demanda] falhas (até 50 primeiras):', falhas);
+      showErr(errEl, `Algumas linhas não foram importadas: ` + falhas.slice(0,4).join(' | ') + (erros > 4 ? ` (+${erros-4} outra(s) — lista completa no console/F12)` : ''));
     }
   } catch(e) {
     showErr(errEl, 'Erro ao gravar a demanda: ' + e.message);
@@ -671,30 +697,31 @@ window.processarImportDemanda = async () => {
 // PARTE 3 — CÁLCULO DE NECESSIDADE POR PERÍODO
 // ══════════════════════════════════════════════════════════════════════
 
-// Fluxo: soma a demanda de cada (cliente, item) dentro do período → acha a embalagem PADRÃO
-// daquele cliente+item → divide pelo multiplicador, sempre arredondando para cima.
-// Embalagens alternativas nunca entram nesse cálculo (regra explícita do usuário).
+// Fluxo: soma a demanda de cada ITEM dentro do período (a planilha de demanda não tem cliente
+// confiável — ver nota na PARTE 2) → acha a relação PADRÃO cadastrada para aquele item (o
+// cliente de verdade vem dali, já que um código de item nunca se repete para outro cliente) →
+// divide pelo multiplicador, sempre arredondando para cima. Embalagens alternativas nunca
+// entram nesse cálculo (regra explícita do usuário).
 function calcularNecessidadePorPeriodo(dataInicial, dataFinal){
-  const porItemCliente = {}; // chave: clienteId + '|' + itemCodigo
+  const porItem = {}; // chave: itemCodigo
   for (const d of window._plDemanda) {
     if (d.dataEntrega < dataInicial || d.dataEntrega > dataFinal) continue;
-    const chave = d.clienteId + '|' + d.itemCodigo;
-    if (!porItemCliente[chave]) porItemCliente[chave] = { clienteId: d.clienteId, clienteNome: d.clienteNome, itemCodigo: d.itemCodigo, demandaTotal: 0 };
-    porItemCliente[chave].demandaTotal += Number(d.quantidade) || 0;
+    if (!porItem[d.itemCodigo]) porItem[d.itemCodigo] = { itemCodigo: d.itemCodigo, demandaTotal: 0 };
+    porItem[d.itemCodigo].demandaTotal += Number(d.quantidade) || 0;
   }
 
   const resultado = [];
-  for (const chave in porItemCliente) {
-    const grupo = porItemCliente[chave];
-    const padrao = window._plRelacoes.find(r => r.clienteId === grupo.clienteId && r.itemCodigo === grupo.itemCodigo && r.padrao);
+  for (const itemCodigo in porItem) {
+    const grupo = porItem[itemCodigo];
+    const padrao = window._plRelacoes.find(r => r.itemCodigo === itemCodigo && r.padrao);
     if (!padrao) {
-      resultado.push({ ...grupo, embCatId: null, codigoEmbalagem: null, multiplicador: null, necessario: null, semPadrao: true });
+      resultado.push({ ...grupo, clienteId: null, clienteNome: null, embCatId: null, codigoEmbalagem: null, multiplicador: null, necessario: null, semPadrao: true });
       continue;
     }
     const necessario = Math.ceil(grupo.demandaTotal / padrao.multiplicador);
-    resultado.push({ ...grupo, embCatId: padrao.embCatId, codigoEmbalagem: padrao.codigoEmbalagem, multiplicador: padrao.multiplicador, necessario, semPadrao: false });
+    resultado.push({ ...grupo, clienteId: padrao.clienteId, clienteNome: padrao.clienteNome, embCatId: padrao.embCatId, codigoEmbalagem: padrao.codigoEmbalagem, multiplicador: padrao.multiplicador, necessario, semPadrao: false });
   }
-  resultado.sort((a,b) => (a.clienteNome||'').localeCompare(b.clienteNome||'') || a.itemCodigo.localeCompare(b.itemCodigo));
+  resultado.sort((a,b) => (a.clienteNome||'zzz').localeCompare(b.clienteNome||'zzz') || a.itemCodigo.localeCompare(b.itemCodigo));
   return resultado;
 }
 
@@ -715,7 +742,7 @@ window.calcularPeriodo = () => {
 
   tbody.innerHTML = resultado.map(r => `
     <tr>
-      <td data-label="Cliente">${esc(r.clienteNome)}</td>
+      <td data-label="Cliente">${r.clienteNome ? esc(r.clienteNome) : '<span style="color:var(--text3)">– sem relação –</span>'}</td>
       <td data-label="Item" style="font-family:var(--font-mono)">${esc(r.itemCodigo)}</td>
       <td data-label="Demanda no Período" style="font-family:var(--font-mono)">${r.demandaTotal}</td>
       <td data-label="Embalagem Padrão" style="font-family:var(--font-mono)">${r.semPadrao ? '<span style="color:var(--warn)">— sem padrão cadastrada —</span>' : esc(r.codigoEmbalagem)}</td>

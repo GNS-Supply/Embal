@@ -233,14 +233,15 @@
     <div id="modal-import-demanda-error" class="error-msg"></div>
     <div id="modal-import-demanda-success" class="success-msg"></div>
     <div class="field">
-      <label>ARQUIVO EXCEL (.xlsx / .xls)</label>
+      <label>ARQUIVO (.csv, .xlsx ou .xls)</label>
       <div class="single-upload-zone" onclick="document.getElementById('import-demanda-file').click()">
-        <input type="file" id="import-demanda-file" accept=".xlsx,.xls" onchange="handleImportDemandaFile(this)" style="display:none">
+        <input type="file" id="import-demanda-file" accept=".csv,.xlsx,.xls" onchange="handleImportDemandaFile(this)" style="display:none">
         <span class="su-placeholder" id="import-demanda-file-label">📄 Selecionar arquivo…</span>
       </div>
     </div>
     <div style="color:var(--text2);font-size:12px;line-height:1.6;margin-top:4px;">
-      A planilha deve ter colunas com cabeçalhos identificáveis: algo com "Item", algo com "Cliente", algo com "Data" e algo com "Quantidade"/"Qtd" — a ordem das colunas não importa.<br>
+      Formato fixo (16 colunas, A a P, com cabeçalho na 1ª linha): <strong>coluna E</strong> = código do item, <strong>coluna J</strong> = quantidade, <strong>coluna K</strong> = data de entrega. As demais colunas são ignoradas (a coluna A é lida só como referência — o nome do cliente não é usado, já que um código de item nunca se repete para outro cliente; o cliente certo vem da Relação já cadastrada).<br>
+      Linhas repetidas do mesmo item na mesma data são somadas automaticamente antes de gravar — arquivos com ~100 mil linhas são suportados, mas a importação pode levar alguns minutos: não feche a aba.<br>
       <strong style="color:var(--warn);">Atenção:</strong> importar substitui TODA a demanda atual.
       <br><a href="#" onclick="baixarModeloDemanda();return false;" style="color:var(--accent);">⬇ Baixar planilha modelo</a>
     </div>
