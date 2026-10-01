@@ -471,28 +471,33 @@ window.processarImportRelacao = async () => {
   btn.disabled = true; btn.textContent = 'Processando…';
 
   let criadas = 0, duplicadas = 0, erros = 0;
-  const falhas = [];
+  const embalagensNaoEncontradas = new Map(); // código -> quantas linhas
+  const embalagensAmbiguas = new Map();       // código -> quantas linhas (existe em mais de 1 cliente)
+  const outrasFalhas = [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const clienteNome = String(row[0] ?? '').trim();
+    // coluna A (cliente) é só informativa — não é usada para achar nada, já que nenhum código
+    // de item ou de embalagem se repete entre clientes diferentes (o cliente certo vem do
+    // próprio cadastro da embalagem no Catálogo).
     const codigoEmb = String(row[1] ?? '').trim().toUpperCase();
     const itemCodigo = String(row[2] ?? '').trim().toUpperCase();
     const multiplicador = Number(row[3]);
     const linhaPlanilha = i + 2; // +1 cabeçalho, +1 base 1
 
-    const cliente = window._plClientes.find(c => c.nome?.trim().toLowerCase() === clienteNome.toLowerCase());
-    if (!cliente) { erros++; falhas.push(`Linha ${linhaPlanilha}: cliente "${clienteNome}" não encontrado.`); continue; }
-    const emb = window._plEmbCat.find(e => e.codigo === codigoEmb && e.clienteId === cliente.id);
-    if (!emb) { erros++; falhas.push(`Linha ${linhaPlanilha}: embalagem "${codigoEmb}" não encontrada no catálogo para "${clienteNome}".`); continue; }
-    if (!itemCodigo) { erros++; falhas.push(`Linha ${linhaPlanilha}: código do item vazio.`); continue; }
-    if (!qtdInteiraValida(multiplicador) || multiplicador <= 0) { erros++; falhas.push(`Linha ${linhaPlanilha}: multiplicador inválido.`); continue; }
+    const candidatas = window._plEmbCat.filter(e => e.codigo === codigoEmb);
+    if (!candidatas.length) { erros++; embalagensNaoEncontradas.set(codigoEmb, (embalagensNaoEncontradas.get(codigoEmb)||0)+1); continue; }
+    if (candidatas.length > 1) { erros++; embalagensAmbiguas.set(codigoEmb, (embalagensAmbiguas.get(codigoEmb)||0)+1); continue; }
+    const emb = candidatas[0];
+    const cliente = window._plClientes.find(c => c.id === emb.clienteId);
+    if (!itemCodigo) { erros++; outrasFalhas.push(`Linha ${linhaPlanilha}: código do item vazio.`); continue; }
+    if (!qtdInteiraValida(multiplicador) || multiplicador <= 0) { erros++; outrasFalhas.push(`Linha ${linhaPlanilha}: multiplicador inválido.`); continue; }
 
-    const duplicada = window._plRelacoes.some(r => r.clienteId === cliente.id && r.itemCodigo === itemCodigo && r.embCatId === emb.id);
+    const duplicada = window._plRelacoes.some(r => r.embCatId === emb.id && r.itemCodigo === itemCodigo);
     if (duplicada) { duplicadas++; continue; }
 
-    const ehPrimeiraDoItem = relacoesDoItemCliente(cliente.id, itemCodigo).length === 0;
+    const ehPrimeiraDoItem = relacoesDoItemCliente(emb.clienteId, itemCodigo).length === 0;
     const data = {
-      clienteId: cliente.id, clienteNome: cliente.nome,
+      clienteId: emb.clienteId, clienteNome: cliente?.nome || emb.clienteId,
       embCatId: emb.id, codigoEmbalagem: emb.codigo,
       itemCodigo, multiplicador,
       padrao: ehPrimeiraDoItem,
@@ -503,11 +508,16 @@ window.processarImportRelacao = async () => {
       const ref = await addDoc(collection(db,'planejamento_relacoes'), data);
       window._plRelacoes.push({ id: ref.id, ...data });
       criadas++;
-    } catch(e) { erros++; falhas.push(`Linha ${linhaPlanilha}: erro ao salvar (${e.message}).`); }
+    } catch(e) { erros++; outrasFalhas.push(`Linha ${linhaPlanilha}: erro ao salvar (${e.message}).`); }
   }
 
   okEl.style.display = 'block';
   okEl.textContent = `✓ ${criadas} relação(ões) criada(s), ${duplicadas} já existente(s) (ignorada(s)), ${erros} com erro.`;
+  const falhas = [
+    ...[...embalagensNaoEncontradas].map(([cod,qtd]) => `Embalagem "${cod}" não encontrada em nenhum cliente do catálogo (${qtd} linha(s)).`),
+    ...[...embalagensAmbiguas].map(([cod,qtd]) => `Embalagem "${cod}" está cadastrada para mais de um cliente no catálogo — não dá pra saber qual usar sem ambiguidade (${qtd} linha(s)). Corrija o código duplicado no Catálogo.`),
+    ...outrasFalhas
+  ];
   if (falhas.length) {
     console.warn('[importação relação] falhas:', falhas);
     showErr(errEl, `Algumas linhas não foram importadas (veja o console/F12 para a lista completa): ` + falhas.slice(0,4).join(' | ') + (falhas.length > 4 ? ` (+${falhas.length-4} outra(s))` : ''));

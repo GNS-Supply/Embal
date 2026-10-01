@@ -213,8 +213,8 @@
     </div>
     <div style="color:var(--text2);font-size:12px;line-height:1.6;margin-top:4px;">
       A planilha deve conter as colunas nesta ordem, a partir da 2ª linha (a 1ª é o cabeçalho):<br>
-      <span style="font-family:var(--font-mono);color:var(--text3)">CLIENTE · CÓDIGO DA EMBALAGEM · CÓDIGO DO ITEM · MULTIPLICADOR</span><br>
-      Cliente e embalagem precisam já existir nos cadastros do sistema. Combinações repetidas (mesmo cliente+item+embalagem) são ignoradas.
+      <span style="font-family:var(--font-mono);color:var(--text3)">CLIENTE (referência) · CÓDIGO DA EMBALAGEM · CÓDIGO DO ITEM · MULTIPLICADOR</span><br>
+      A coluna Cliente é só referência — não precisa bater com o cadastro. O sistema localiza a embalagem só pelo <strong>código</strong> no Catálogo e usa o cliente já cadastrado para ela (código de item ou de embalagem nunca se repete entre clientes diferentes). A embalagem precisa já existir no Catálogo. Combinações repetidas (mesmo item+embalagem) são ignoradas.
       <br><a href="#" onclick="baixarModeloRelacao();return false;" style="color:var(--accent);">⬇ Baixar planilha modelo</a>
     </div>
     <div id="import-relacao-summary" style="display:none;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-top:14px;font-size:13px;color:var(--text2);"></div>
