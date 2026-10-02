@@ -470,9 +470,9 @@ window.processarImportRelacao = async () => {
   const btn = document.getElementById('btn-processar-import-relacao');
   btn.disabled = true; btn.textContent = 'Processando…';
 
-  let criadas = 0, duplicadas = 0, erros = 0;
-  const embalagensNaoEncontradas = new Map(); // código -> quantas linhas
-  const embalagensAmbiguas = new Map();       // código -> quantas linhas (existe em mais de 1 cliente)
+  let criadas = 0, duplicadas = 0, ignoradas = 0, erros = 0;
+  const embalagensNaoEncontradas = new Map(); // código -> quantas linhas (normal — catálogo é só um subconjunto do que existe)
+  const embalagensAmbiguas = new Map();       // código -> quantas linhas (problema real: mesmo código em >1 cliente no catálogo)
   const outrasFalhas = [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -485,7 +485,12 @@ window.processarImportRelacao = async () => {
     const linhaPlanilha = i + 2; // +1 cabeçalho, +1 base 1
 
     const candidatas = window._plEmbCat.filter(e => e.codigo === codigoEmb);
-    if (!candidatas.length) { erros++; embalagensNaoEncontradas.set(codigoEmb, (embalagensNaoEncontradas.get(codigoEmb)||0)+1); continue; }
+    // embalagem ainda não cadastrada no Catálogo: esperado em planilhas grandes/completas —
+    // só pula a linha, sem contar como erro nem travar a importação (o usuário não tem como
+    // revisar 100% de arquivos assim antes de importar).
+    if (!candidatas.length) { ignoradas++; embalagensNaoEncontradas.set(codigoEmb, (embalagensNaoEncontradas.get(codigoEmb)||0)+1); continue; }
+    // já isso aqui É um problema real de cadastro (mesmo código em mais de um cliente no
+    // Catálogo) — fica como erro de verdade, para alguém corrigir o Catálogo.
     if (candidatas.length > 1) { erros++; embalagensAmbiguas.set(codigoEmb, (embalagensAmbiguas.get(codigoEmb)||0)+1); continue; }
     const emb = candidatas[0];
     const cliente = window._plClientes.find(c => c.id === emb.clienteId);
@@ -512,15 +517,17 @@ window.processarImportRelacao = async () => {
   }
 
   okEl.style.display = 'block';
-  okEl.textContent = `✓ ${criadas} relação(ões) criada(s), ${duplicadas} já existente(s) (ignorada(s)), ${erros} com erro.`;
+  okEl.textContent = `✓ ${criadas} relação(ões) criada(s), ${duplicadas} já existente(s) (ignorada(s)), ${ignoradas} linha(s) ignorada(s) (embalagem ainda não cadastrada no catálogo)${erros ? `, ${erros} com erro` : ''}.`;
+  if (embalagensNaoEncontradas.size) {
+    console.info('[importação relação] embalagens ignoradas (não cadastradas no catálogo ainda):', [...embalagensNaoEncontradas].map(([cod,qtd])=>`${cod} (${qtd}x)`));
+  }
   const falhas = [
-    ...[...embalagensNaoEncontradas].map(([cod,qtd]) => `Embalagem "${cod}" não encontrada em nenhum cliente do catálogo (${qtd} linha(s)).`),
     ...[...embalagensAmbiguas].map(([cod,qtd]) => `Embalagem "${cod}" está cadastrada para mais de um cliente no catálogo — não dá pra saber qual usar sem ambiguidade (${qtd} linha(s)). Corrija o código duplicado no Catálogo.`),
     ...outrasFalhas
   ];
   if (falhas.length) {
-    console.warn('[importação relação] falhas:', falhas);
-    showErr(errEl, `Algumas linhas não foram importadas (veja o console/F12 para a lista completa): ` + falhas.slice(0,4).join(' | ') + (falhas.length > 4 ? ` (+${falhas.length-4} outra(s))` : ''));
+    console.warn('[importação relação] falhas reais:', falhas);
+    showErr(errEl, `Algumas linhas têm problema de verdade no dado (veja o console/F12 para a lista completa): ` + falhas.slice(0,4).join(' | ') + (falhas.length > 4 ? ` (+${falhas.length-4} outra(s))` : ''));
   }
   renderRelacoes();
   btn.disabled = false; btn.textContent = 'Processar Importação';
